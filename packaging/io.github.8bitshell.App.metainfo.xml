@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.8bitshell.App</id>
+  <name>8bitShell</name>
+  <summary>A programmable remote access workspace</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <developer id="io.github.8bitPrograms">
+    <name>8bitShell</name>
+  </developer>
+  <url type="homepage">https://github.com/8bitPrograms/8bitShell</url>
+  <description>
+    <p>
+      8bitShell combines multi-tab terminals, saved OpenSSH sessions, SFTP file
+      transfers, plain-text logging, and custom output highlighting in one
+      cross-desktop Qt application.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.8bitshell.App.desktop</launchable>
+  <provides>
+    <binary>8bitShell</binary>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0-alpha.1" date="2026-09-12" type="development"/>
+  </releases>
+</component>

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bitshell.local/schemas/policy.schema.json",
+  "title": "8bitShell connection policies",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "policies"],
+  "properties": {
+    "schema": { "const": 1 },
+    "policies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/policy" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "template": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "route"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "enabled": { "type": "boolean", "default": true },
+        "priority": { "type": "integer", "default": 0 },
+        "profile": { "$ref": "#/$defs/id" },
+        "match": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "all_tags": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/id" }
+            }
+          }
+        },
+        "variables": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "route": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "user"],
+          "properties": {
+            "backend": { "enum": ["openssh", "managed"] },
+            "host": { "$ref": "#/$defs/template" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "user": { "$ref": "#/$defs/template" },
+            "forward_x11": { "type": "boolean", "default": false },
+            "trusted_x11": { "type": "boolean", "default": false }
+          }
+        },
+        "conversation": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/conversationStep" }
+        }
+      }
+    },
+    "conversationStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "expect", "action"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "expect": { "type": "string", "minLength": 1 },
+        "action": {
+          "enum": ["ask", "ask_secret", "send_literal", "choose", "notify"]
+        },
+        "label": { "type": "string" },
+        "value": { "type": "string" },
+        "choices": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sensitive": { "type": "boolean", "default": false },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 600000,
+          "default": 30000
+        }
+      }
+    }
+  }
+}
+

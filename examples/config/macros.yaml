@@ -1,0 +1,27 @@
+# Import from Macro groups > Import YAML. Nothing is executed on import.
+version: 1
+kind: 8bitshell/macros
+groups:
+  - id: linux-tools
+    name: Linux tools
+    buttons:
+      - label: Uptime
+        text: uptime
+        enter: false
+      - label: Disk usage
+        text: df -h
+        enter: false
+  - id: oracle-tools
+    name: Oracle tools
+    buttons:
+      - label: Database status
+        text: |-
+          select name, open_mode
+          from v$database;
+        enter: false
+      - label: Instance status
+        text: select instance_name, status from v$instance;
+        enter: false
+folders:
+  "": linux-tools
+  Databases/Oracle: oracle-tools

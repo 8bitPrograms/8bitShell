@@ -1,0 +1,40 @@
+# Importable example only: replace fictional targets/domain with approved company values.
+# Personal employee usernames and passwords do not belong in this shared file.
+version: 2
+kind: 8bitshell/sessions
+routes:
+  company-psmp:
+    type: cyberark-psmp
+    name: Company CyberArk
+    host: psmp.example.test
+    port: 22
+    account:
+      source: identity
+      suffix: SYS
+      domain: corp.example.test
+    allowSftp: false
+    allowMonitoring: false
+folders: [Oracle, Oracle/Production, Oracle/Cloud, Oracle/Lab]
+folderConnections:
+  Oracle:
+    mode: route
+    route: company-psmp
+sessions:
+  - id: example-psmp-sys
+    name: Example SYS account
+    host: db01.example.test
+    folder: Oracle/Production
+    connection: {mode: inherit}
+  - id: example-psmp-opc
+    name: Example OPC account
+    host: cloud-db02.example.test
+    folder: Oracle/Cloud
+    connection:
+      mode: inherit
+      account: {source: literal, name: opc}
+  - id: example-direct-exception
+    name: Example direct exception
+    host: lab01.example.test
+    user: oracle
+    folder: Oracle/Lab
+    connection: {mode: direct}

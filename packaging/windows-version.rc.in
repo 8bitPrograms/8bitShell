@@ -1,0 +1,28 @@
+#include <windows.h>
+#define IDI_BIT8SHELL 101
+IDI_BIT8SHELL ICON DISCARDABLE "@CMAKE_CURRENT_SOURCE_DIR@/assets/bitshell.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @BIT8SHELL_VERSION_MAJOR@,@BIT8SHELL_VERSION_MINOR@,@_bitshell_msi_build@,0
+ PRODUCTVERSION @BIT8SHELL_VERSION_MAJOR@,@BIT8SHELL_VERSION_MINOR@,@_bitshell_msi_build@,0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "8bitShell\0"
+            VALUE "FileDescription", "8bitShell remote workspace\0"
+            VALUE "FileVersion", "@BIT8SHELL_VERSION@\0"
+            VALUE "InternalName", "bitshell\0"
+            VALUE "OriginalFilename", "8bitShell.exe\0"
+            VALUE "ProductName", "8bitShell\0"
+            VALUE "ProductVersion", "@BIT8SHELL_VERSION@\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

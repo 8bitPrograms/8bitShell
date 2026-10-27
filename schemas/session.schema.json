@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bitshell.local/schemas/session.schema.json",
+  "title": "8bitShell local session catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "kind", "sessions"],
+  "properties": {
+    "version": { "enum": [1, 2] },
+    "kind": { "const": "8bitshell/sessions" },
+    "routes": { "type": "object", "maxProperties": 256,
+      "propertyNames": { "maxLength": 128, "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.+-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/route" } },
+    "folderConnections": { "type": "object", "maxProperties": 10000, "additionalProperties": { "$ref": "#/$defs/folderConnection" } },
+    "folders": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^/]+(?:/[^/]+)*$"
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/session" }
+    }
+  },
+  "$defs": {
+    "folderConnection": {
+      "allOf": [
+        { "$ref": "#/$defs/connection" },
+        { "if": { "properties": { "mode": { "const": "inherit" } } },
+          "then": { "not": { "required": ["account"] } } }
+      ]
+    },
+    "account": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["source"], "properties": {
+          "source": { "const": "identity" }, "suffix": { "type": "string", "maxLength": 128, "pattern": "^(?:[A-Za-z0-9_][A-Za-z0-9_.+-]*)?$" },
+          "domain": { "type": "string", "maxLength": 128, "pattern": "^(?:[A-Za-z0-9_][A-Za-z0-9_.+-]*)?$" }
+        } },
+        { "type": "object", "additionalProperties": false, "required": ["source", "name"], "properties": {
+          "source": { "const": "literal" }, "name": { "type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.+-]*$" },
+          "domain": { "type": "string", "maxLength": 128, "pattern": "^(?:[A-Za-z0-9_][A-Za-z0-9_.+-]*)?$" }
+        } }
+      ]
+    },
+    "route": {
+      "type": "object", "additionalProperties": false, "required": ["type", "host", "account"],
+      "properties": {
+        "type": { "const": "cyberark-psmp" }, "name": { "type": "string", "maxLength": 255 },
+        "host": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "account": { "$ref": "#/$defs/account" }, "allowSftp": { "type": "boolean", "default": false }, "allowMonitoring": { "type": "boolean", "default": false }
+      }
+    },
+    "connection": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["mode"], "properties": { "mode": { "const": "direct" } } },
+        { "type": "object", "additionalProperties": false, "required": ["mode"], "properties": { "mode": { "const": "inherit" }, "account": { "$ref": "#/$defs/account" } } },
+        { "type": "object", "additionalProperties": false, "required": ["mode", "route"], "properties": {
+          "mode": { "const": "route" }, "route": { "type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.+-]*$" }, "account": { "$ref": "#/$defs/account" }
+        } }
+      ]
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "host"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "host": { "type": "string", "minLength": 1 },
+        "user": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "folder": {
+          "type": "string",
+          "pattern": "^(?:|[^/]+(?:/[^/]+)*)$"
+        },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "identityKey": { "type": "string", "pattern": "^(?:|none|[0-9a-f]{32})$" },
+        "identityFile": { "type": "string" },
+        "proxyJump": { "type": "string" },
+        "forwardX11": { "type": "boolean" },
+        "agentForwarding": { "type": "boolean" },
+        "compression": { "type": "boolean" },
+        "backspaceMode": { "enum": ["default", "del", "bs"] },
+        "connection": { "$ref": "#/$defs/connection" }
+      }
+    }
+  }
+}

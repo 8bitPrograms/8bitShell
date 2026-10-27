@@ -1,0 +1,25 @@
+build/
+.cache/
+.idea/
+.vscode/
+*.user
+*.swp
+compile_commands.json
+CMakeUserPresets.json
+
+# Build products, local evidence and personal agent state never belong upstream.
+outputs/
+dist/
+.agents/
+.codex/
+.venv/
+__pycache__/
+*.pyc
+docs/QA-*.md
+docs/NEXT-SESSION.md
+*.pem
+*.pfx
+*.p12
+.env
+
+tooling/

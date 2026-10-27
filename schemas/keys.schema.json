@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bitshell.local/schemas/keys.schema.json",
+  "title": "8bitShell local SSH key metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "kind", "defaultKey", "cyberArkKey", "keys"],
+  "properties": {
+    "version": { "const": 1 },
+    "kind": { "const": "8bitshell/keys" },
+    "defaultKey": { "$ref": "#/$defs/optionalKeyId" },
+    "cyberArkKey": { "$ref": "#/$defs/optionalKeyId" },
+    "keys": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "file", "format", "fingerprint", "type", "bits"],
+        "properties": {
+          "id": { "$ref": "#/$defs/keyId" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "file": { "type": "string", "pattern": "^key-[0-9a-f]{32}-[0-9a-f]{32}\\.key$" },
+          "format": { "enum": ["openssh", "ppk"] },
+          "fingerprint": { "type": "string", "pattern": "^SHA256:[A-Za-z0-9+/]+={0,2}$" },
+          "type": { "enum": ["ED25519", "ECDSA", "RSA"] },
+          "bits": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "keyId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "optionalKeyId": { "type": "string", "pattern": "^(?:|[0-9a-f]{32})$" }
+  }
+}

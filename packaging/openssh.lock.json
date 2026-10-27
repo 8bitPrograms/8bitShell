@@ -1,0 +1,21 @@
+{
+  "version": "10.4.0.0",
+  "source": "https://github.com/PowerShell/Win32-OpenSSH/releases",
+  "assets": {
+    "x64": {
+      "name": "OpenSSH-Win64.zip",
+      "url": "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.4.0.0p1-Preview/OpenSSH-Win64.zip",
+      "sha256": "b67ff8becd203502190ec42ac7787c24c2cd3325ed7700485fe7a1c83d2a7957"
+    },
+    "arm64": {
+      "name": "OpenSSH-ARM64.zip",
+      "url": "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.4.0.0p1-Preview/OpenSSH-ARM64.zip",
+      "sha256": "d2b1928225479fec9e0c938f527fdb5ed676446cca1bbcc5af84aca1f272842e"
+    },
+    "x86": {
+      "name": "OpenSSH-Win32.zip",
+      "url": "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.4.0.0p1-Preview/OpenSSH-Win32.zip",
+      "sha256": "4f7218ec8f1df9217ed17fbfaf16057d7d40559a04eeae710ce234feabbd618b"
+    }
+  }
+}

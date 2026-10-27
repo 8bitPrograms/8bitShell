@@ -1,0 +1,2 @@
+#pragma once
+#define BIT8SHELL_VERSION "@BIT8SHELL_VERSION@"

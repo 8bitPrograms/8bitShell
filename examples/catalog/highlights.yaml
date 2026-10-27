@@ -1,0 +1,36 @@
+schema: 1
+
+profiles:
+  - id: dba-operations
+    name: DBA Operations
+    rules:
+      - id: errors
+        name: Errors
+        enabled: true
+        pattern: "\\b(ERROR|FAILED|FATAL|ORA-[0-9]+|TNS-[0-9]+)\\b"
+        case_sensitive: false
+        priority: 100
+        style:
+          foreground: "#f26d78"
+          bold: true
+
+      - id: warnings
+        name: Warnings
+        enabled: true
+        pattern: "\\b(WARN|WARNING)\\b"
+        case_sensitive: false
+        priority: 90
+        style:
+          foreground: "#e5b567"
+          bold: true
+
+      - id: ipv4
+        name: IPv4 addresses
+        enabled: true
+        pattern: "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b"
+        case_sensitive: true
+        priority: 50
+        style:
+          foreground: "#70a5eb"
+          underline: true
+
