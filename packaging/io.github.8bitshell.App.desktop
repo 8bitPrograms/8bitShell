@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=8bitShell
+GenericName=Terminal and Remote Access Workspace
+Comment=SSH terminals, SFTP, logging, and output highlighting in one workspace
+Exec=8bitShell
+TryExec=8bitShell
+Icon=8bitshell
+Terminal=false
+Categories=System;TerminalEmulator;
+X-TerminalArgExec=-e
+X-TerminalArgDir=--working-directory
+X-TerminalArgTitle=--title
+Keywords=SSH;SFTP;Terminal;Remote;
+StartupNotify=true
+StartupWMClass=bitshell

@@ -1,0 +1,47 @@
+# Partial settings import: omitted fields keep their current values.
+# Export Settings from the app for the complete file, including local paths.
+version: 1
+kind: 8bitshell/settings
+appearance:
+  uiTheme: catppuccin-mocha
+  terminalTheme: xterm
+  uiLightTheme: catppuccin-latte
+  terminalLightTheme: xterm
+  mode: dark
+  dayStart: "07:00"
+  nightStart: "19:00"
+terminal:
+  fontSize: 13
+  textAntialiasing: system # system | grayscale | aliased
+  fontHinting: default # default | none | vertical | full
+  scrollbackLines: 10000
+  backspaceMode: del
+  copyOnSelect: false
+logging:
+  enabledByDefault: true
+  directoryTemplate: "{session}"
+  fileNameTemplate: "{session}_{date}_{time}.log"
+  lineTimestamps: false
+  append: true
+  rotationMegabytes: 25
+  retainedFiles: 5
+highlighting:
+  enabledByDefault: true
+monitoring:
+  enabledByDefault: false
+navigation:
+  sidebarVisible: true
+  fileBrowserVisible: false
+macros:
+  barVisible: true
+shortcuts:
+  copy: Ctrl+Shift+C
+  paste: Ctrl+Shift+V
+  pasteSelection: Ctrl+Shift+Insert
+  find: Ctrl+F
+  newTab: Ctrl+Shift+T
+  closeTab: Ctrl+Shift+W
+  nextTab: Ctrl+Tab
+  quickConnect: Ctrl+K
+  zoomIn: Ctrl++
+  zoomOut: Ctrl+-

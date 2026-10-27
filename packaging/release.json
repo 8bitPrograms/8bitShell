@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "app": "8bitShell",
+  "slug": "8bitshell",
+  "environment": "BIT8SHELL",
+  "cmakeTarget": "bitshell",
+  "versionFile": "PROJECT_VERSION",
+  "qtVersion": "6.11.2",
+  "linuxGlibc": "2.35",
+  "macosMinimum": "14.4",
+  "maintainer": "8bitShell contributors",
+  "description": "Terminal and remote access workspace",
+  "license": "LicenseRef-8bitShell-Pending",
+  "upgradeCode": "E652F7A6-9E2C-4F10-84E0-6477E13A3485",
+  "iconSvg": "assets/bitshell.svg",
+  "iconIco": "assets/bitshell.ico",
+  "iconIcns": "assets/bitshell.icns",
+  "repository": "8bitPrograms/8bitShell",
+  "releasePolicy": "packaging/release-policy.json",
+  "platforms": {
+    "stable": [
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64",
+      "macos-x64",
+      "macos-arm64"
+    ],
+    "experimental": [
+      "windows-x86",
+      "linux-x86",
+      "linux-armv7"
+    ]
+  },
+  "linuxGlibcByArch": {
+    "x64": "2.35",
+    "arm64": "2.35",
+    "x86": "2.36",
+    "armv7": "2.36"
+  },
+  "publisher": "8bitPrograms",
+  "startMenuFolder": "8bitPrograms"
+}

@@ -1,0 +1,41 @@
+schema: 1
+
+catalog:
+  id: dba-team
+  name: DBA Team Sessions
+  read_only: false
+
+sessions:
+  - id: db-prod-01
+    name: Production Database 01
+    protocol: ssh
+    folder: Production/Oracle/DC1
+    description: Example privileged database session
+    tags: [production, oracle, cyberark]
+    target:
+      host: db-prod-01.internal.example
+      port: 22
+      user: sys
+      account: privileged-sys
+    policy: example-cyberark
+    terminal_profile: operations-dark
+    highlight_profile: dba-operations
+    logging_profile: xshell-style
+    overrides:
+      forward_x11: true
+      trusted_x11: false
+      backend: openssh
+
+  - id: tools-direct-01
+    name: Tools Direct 01
+    protocol: ssh
+    folder: Production/Tools
+    tags: [production, tools, direct]
+    target:
+      host: 192.0.2.40
+      port: 22
+      user: operator
+    terminal_profile: operations-dark
+    highlight_profile: dba-operations
+    logging_profile: xshell-style
+

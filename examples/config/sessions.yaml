@@ -1,0 +1,29 @@
+# Import from Connections > ... > Session YAML import / export.
+# Stable ids let a generator produce repeatable catalogs without duplicates.
+version: 1
+kind: 8bitshell/sessions
+folders:
+  - Databases/Oracle/Production
+  - Linux/Development
+  - Empty folder
+sessions:
+  - id: oracle-production-01
+    name: Oracle production
+    host: oracle.example.test
+    user: operator
+    port: 22
+    folder: Databases/Oracle/Production
+    tags: [oracle, production]
+    identityFile: ""
+    proxyJump: ""
+    forwardX11: false
+    agentForwarding: false
+    compression: false
+    backspaceMode: bs
+  - id: linux-development-01
+    name: Linux development
+    host: linux.example.test
+    user: developer
+    folder: Linux/Development
+    tags: [linux, development]
+    backspaceMode: default

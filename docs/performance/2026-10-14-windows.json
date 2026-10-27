@@ -1,0 +1,2330 @@
+{
+  "schema": 1,
+  "date": "2026-10-14",
+  "environment": "Restricted Windows x64 Codex session; no real remote connections",
+  "build": {
+    "configuration": "Release",
+    "msvc": "19.44.35229",
+    "visual_studio": "17.14.42",
+    "cmake": "3.31.6-msvc6",
+    "ninja": "1.12.1",
+    "qt": "6.11.2",
+    "fresh_build_directory": "build/windows-performance",
+    "runtime_directory": "build/performance-runtime",
+    "cmake_try_compile_configuration": "Release"
+  },
+  "validation": {
+    "ctest_targets_passed_excluding_blocked_suites": 16,
+    "ctest_targets_total": 19,
+    "ctest_excluded_suites": [
+      "ssh_key_store_test",
+      "windows_security_test",
+      "windows_pty_test"
+    ],
+    "windows_pty_selected_qttest_cases_and_data_rows_passed": 13,
+    "blocked_fixtures": [
+      "Native ssh-keygen public-key creation",
+      "Windows hard-link creation",
+      "Inherited-handle child STATUS_INVALID_HANDLE (old binary also reproduces)"
+    ],
+    "known_skips": [
+      "UI SFTP system sftp-server fixture unavailable",
+      "One release-infrastructure test skipped"
+    ],
+    "asan_build_run": false,
+    "linux_tests_run": false,
+    "full_release_checks_passed": false
+  },
+  "measurement_limits": [
+    "Serial local-fixture runs only; no old/new controlled speed comparison",
+    "Native software cases have three repeats; other backends/workloads have one",
+    "First-frame timing starts in main and excludes pre-main loading",
+    "Memory is process private commit and working set; GPU allocations excluded",
+    "Child working sets may double-count shared pages",
+    "Real SSH/CyberArk/MFA/endpoint-agent behavior unmeasured"
+  ],
+  "reports": {
+    "offscreen_software_idle": {
+      "observation_seconds": 3,
+      "schema": 1,
+      "measured_at": "2026-10-14T20:08:46.856883+00:00",
+      "binary_sha256": "a2a3d012a8c0312294e85ced29ec7267704d7a24d1eadee831ca752fc1df86c3",
+      "fixture_sha256": "e2677ce73f789b54b2eea75ba47b178cc2f487edfbc3e99135ee6948656145b0",
+      "display": "offscreen",
+      "renderer": "software",
+      "workload": "idle",
+      "gpu_memory_included": false,
+      "scope": "main process and enumerated descendants; no network or personal profile",
+      "cases": [
+        {
+          "repeat": 1,
+          "tabs": 0,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 871,
+            "main_to_first_frame_ms": 898,
+            "qt": "6.11.2",
+            "requested_tabs": 0,
+            "running_local_processes": 0,
+            "schema": 1,
+            "sessions": [],
+            "settled_at_ms": 3883,
+            "tabs": 0,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 47800320.0,
+          "steady_working_set_bytes": 66334720.0,
+          "sampled_peak_private_bytes": 47800320,
+          "peak_working_set_bytes": 66363392,
+          "steady_cpu_percent_of_one_core": 3.2526607545668926,
+          "steady_tree_private_bytes": 47800320.0,
+          "steady_tree_working_set_bytes": 66334720.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 1
+        },
+        {
+          "repeat": 1,
+          "tabs": 1,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 403,
+            "main_to_first_frame_ms": 442,
+            "qt": "6.11.2",
+            "requested_tabs": 1,
+            "running_local_processes": 1,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 3391,
+            "tabs": 1,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 57077760.0,
+          "steady_working_set_bytes": 76431360.0,
+          "sampled_peak_private_bytes": 57077760,
+          "peak_working_set_bytes": 76476416,
+          "steady_cpu_percent_of_one_core": 1.6261619642759066,
+          "steady_tree_private_bytes": 59461632.0,
+          "steady_tree_working_set_bytes": 90185728.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 6
+        },
+        {
+          "repeat": 1,
+          "tabs": 5,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 500,
+            "main_to_first_frame_ms": 549,
+            "qt": "6.11.2",
+            "requested_tabs": 5,
+            "running_local_processes": 5,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 3500,
+            "tabs": 5,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 84033536.0,
+          "steady_working_set_bytes": 103247872.0,
+          "sampled_peak_private_bytes": 84033536,
+          "peak_working_set_bytes": 103272448,
+          "steady_cpu_percent_of_one_core": 6.497674456317767,
+          "steady_tree_private_bytes": 96047104.0,
+          "steady_tree_working_set_bytes": 172060672.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 11
+        },
+        {
+          "repeat": 1,
+          "tabs": 20,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 900,
+            "main_to_first_frame_ms": 998,
+            "qt": "6.11.2",
+            "requested_tabs": 20,
+            "running_local_processes": 20,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 3902,
+            "tabs": 20,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 186884096.0,
+          "steady_working_set_bytes": 205090816.0,
+          "sampled_peak_private_bytes": 186884096,
+          "peak_working_set_bytes": 205115392,
+          "steady_cpu_percent_of_one_core": 11.343089167801972,
+          "steady_tree_private_bytes": 234868736.0,
+          "steady_tree_working_set_bytes": 480219136.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 44
+        }
+      ]
+    },
+    "native_default_idle": {
+      "observation_seconds": 5,
+      "schema": 1,
+      "measured_at": "2026-10-14T20:19:11.162956+00:00",
+      "binary_sha256": "a2a3d012a8c0312294e85ced29ec7267704d7a24d1eadee831ca752fc1df86c3",
+      "fixture_sha256": "e2677ce73f789b54b2eea75ba47b178cc2f487edfbc3e99135ee6948656145b0",
+      "display": "native",
+      "renderer": "default",
+      "workload": "idle",
+      "gpu_memory_included": false,
+      "scope": "main process and enumerated descendants; no network or personal profile",
+      "cases": [
+        {
+          "repeat": 1,
+          "tabs": 0,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1159,
+            "main_to_first_frame_ms": 1513,
+            "qt": "6.11.2",
+            "requested_tabs": 0,
+            "running_local_processes": 0,
+            "schema": 1,
+            "sessions": [],
+            "settled_at_ms": 6150,
+            "tabs": 0,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 146046976.0,
+          "steady_working_set_bytes": 162664448.0,
+          "sampled_peak_private_bytes": 146092032,
+          "peak_working_set_bytes": 162869248,
+          "steady_cpu_percent_of_one_core": 8.113267760471933,
+          "steady_tree_private_bytes": 146046976.0,
+          "steady_tree_working_set_bytes": 162664448.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 1
+        },
+        {
+          "repeat": 1,
+          "tabs": 1,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1172,
+            "main_to_first_frame_ms": 1518,
+            "qt": "6.11.2",
+            "requested_tabs": 1,
+            "running_local_processes": 1,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6165,
+            "tabs": 1,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 166965248.0,
+          "steady_working_set_bytes": 187789312.0,
+          "sampled_peak_private_bytes": 167026688,
+          "peak_working_set_bytes": 187817984,
+          "steady_cpu_percent_of_one_core": 11.383111240820783,
+          "steady_tree_private_bytes": 169377792.0,
+          "steady_tree_working_set_bytes": 201551872.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 3
+        },
+        {
+          "repeat": 1,
+          "tabs": 5,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1217,
+            "main_to_first_frame_ms": 1568,
+            "qt": "6.11.2",
+            "requested_tabs": 5,
+            "running_local_processes": 5,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6218,
+            "tabs": 5,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 187330560.0,
+          "steady_working_set_bytes": 206393344.0,
+          "sampled_peak_private_bytes": 187392000,
+          "peak_working_set_bytes": 206413824,
+          "steady_cpu_percent_of_one_core": 11.370914930591367,
+          "steady_tree_private_bytes": 199368704.0,
+          "steady_tree_working_set_bytes": 275222528.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 11
+        },
+        {
+          "repeat": 1,
+          "tabs": 20,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1703,
+            "main_to_first_frame_ms": 2100,
+            "qt": "6.11.2",
+            "requested_tabs": 20,
+            "running_local_processes": 20,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6698,
+            "tabs": 20,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 254889984.0,
+          "steady_working_set_bytes": 273141760.0,
+          "sampled_peak_private_bytes": 254935040,
+          "peak_working_set_bytes": 273162240,
+          "steady_cpu_percent_of_one_core": 21.00773198308283,
+          "steady_tree_private_bytes": 302923776.0,
+          "steady_tree_working_set_bytes": 548278272.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 41
+        }
+      ]
+    },
+    "native_default_history": {
+      "observation_seconds": 10,
+      "schema": 1,
+      "measured_at": "2026-10-14T20:25:10.155964+00:00",
+      "binary_sha256": "a2a3d012a8c0312294e85ced29ec7267704d7a24d1eadee831ca752fc1df86c3",
+      "fixture_sha256": "e2677ce73f789b54b2eea75ba47b178cc2f487edfbc3e99135ee6948656145b0",
+      "display": "native",
+      "renderer": "default",
+      "workload": "history",
+      "gpu_memory_included": false,
+      "scope": "main process and enumerated descendants; no network or personal profile",
+      "cases": [
+        {
+          "repeat": 1,
+          "tabs": 0,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1108,
+            "main_to_first_frame_ms": 1442,
+            "qt": "6.11.2",
+            "requested_tabs": 0,
+            "running_local_processes": 0,
+            "schema": 1,
+            "sessions": [],
+            "settled_at_ms": 11100,
+            "tabs": 0,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 147304448.0,
+          "steady_working_set_bytes": 169336832.0,
+          "sampled_peak_private_bytes": 149352448,
+          "peak_working_set_bytes": 171339776,
+          "steady_cpu_percent_of_one_core": 6.507284358228106,
+          "steady_tree_private_bytes": 147304448.0,
+          "steady_tree_working_set_bytes": 169338880.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 1
+        },
+        {
+          "repeat": 1,
+          "tabs": 1,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1115,
+            "main_to_first_frame_ms": 1466,
+            "qt": "6.11.2",
+            "requested_tabs": 1,
+            "running_local_processes": 1,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 11112,
+            "tabs": 1,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 165920768.0,
+          "steady_working_set_bytes": 186695680.0,
+          "sampled_peak_private_bytes": 169058304,
+          "peak_working_set_bytes": 189378560,
+          "steady_cpu_percent_of_one_core": 9.761924620432916,
+          "steady_tree_private_bytes": 168316928.0,
+          "steady_tree_working_set_bytes": 200464384.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 3
+        },
+        {
+          "repeat": 1,
+          "tabs": 5,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1310,
+            "main_to_first_frame_ms": 1684,
+            "qt": "6.11.2",
+            "requested_tabs": 5,
+            "running_local_processes": 5,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 11306,
+            "tabs": 5,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 188252160.0,
+          "steady_working_set_bytes": 208017408.0,
+          "sampled_peak_private_bytes": 195162112,
+          "peak_working_set_bytes": 214511616,
+          "steady_cpu_percent_of_one_core": 24.330146304753594,
+          "steady_tree_private_bytes": 200265728.0,
+          "steady_tree_working_set_bytes": 276887552.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 11
+        },
+        {
+          "repeat": 1,
+          "tabs": 20,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1798,
+            "main_to_first_frame_ms": 2326,
+            "qt": "6.11.2",
+            "requested_tabs": 20,
+            "running_local_processes": 20,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": true,
+                "history_accounted_bytes": 1048344,
+                "history_budget_bytes": 1048576,
+                "history_lines": 1444,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 11790,
+            "tabs": 20,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 276361216.0,
+          "steady_working_set_bytes": 296300544.0,
+          "sampled_peak_private_bytes": 286978048,
+          "peak_working_set_bytes": 306069504,
+          "steady_cpu_percent_of_one_core": 24.320989114760334,
+          "steady_tree_private_bytes": 324464640.0,
+          "steady_tree_working_set_bytes": 571707392.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 41
+        }
+      ]
+    },
+    "native_software_idle": {
+      "observation_seconds": 5,
+      "schema": 1,
+      "measured_at": "2026-10-14T20:26:38.075924+00:00",
+      "binary_sha256": "a2a3d012a8c0312294e85ced29ec7267704d7a24d1eadee831ca752fc1df86c3",
+      "fixture_sha256": "e2677ce73f789b54b2eea75ba47b178cc2f487edfbc3e99135ee6948656145b0",
+      "display": "native",
+      "renderer": "software",
+      "workload": "idle",
+      "gpu_memory_included": false,
+      "scope": "main process and enumerated descendants; no network or personal profile",
+      "cases": [
+        {
+          "repeat": 1,
+          "tabs": 0,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1113,
+            "main_to_first_frame_ms": 1169,
+            "qt": "6.11.2",
+            "requested_tabs": 0,
+            "running_local_processes": 0,
+            "schema": 1,
+            "sessions": [],
+            "settled_at_ms": 6113,
+            "tabs": 0,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 72810496.0,
+          "steady_working_set_bytes": 135901184.0,
+          "sampled_peak_private_bytes": 72810496,
+          "peak_working_set_bytes": 136138752,
+          "steady_cpu_percent_of_one_core": 4.876151473902701,
+          "steady_tree_private_bytes": 72810496.0,
+          "steady_tree_working_set_bytes": 135901184.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 1
+        },
+        {
+          "repeat": 2,
+          "tabs": 0,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1057,
+            "main_to_first_frame_ms": 1084,
+            "qt": "6.11.2",
+            "requested_tabs": 0,
+            "running_local_processes": 0,
+            "schema": 1,
+            "sessions": [],
+            "settled_at_ms": 6049,
+            "tabs": 0,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 72622080.0,
+          "steady_working_set_bytes": 133709824.0,
+          "sampled_peak_private_bytes": 86220800,
+          "peak_working_set_bytes": 134094848,
+          "steady_cpu_percent_of_one_core": 4.879970933577409,
+          "steady_tree_private_bytes": 72622080.0,
+          "steady_tree_working_set_bytes": 133709824.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 1
+        },
+        {
+          "repeat": 3,
+          "tabs": 0,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1072,
+            "main_to_first_frame_ms": 1099,
+            "qt": "6.11.2",
+            "requested_tabs": 0,
+            "running_local_processes": 0,
+            "schema": 1,
+            "sessions": [],
+            "settled_at_ms": 6059,
+            "tabs": 0,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 73150464.0,
+          "steady_working_set_bytes": 134463488.0,
+          "sampled_peak_private_bytes": 73551872,
+          "peak_working_set_bytes": 134787072,
+          "steady_cpu_percent_of_one_core": 4.876651156047129,
+          "steady_tree_private_bytes": 73150464.0,
+          "steady_tree_working_set_bytes": 134463488.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 1
+        },
+        {
+          "repeat": 1,
+          "tabs": 1,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1086,
+            "main_to_first_frame_ms": 1128,
+            "qt": "6.11.2",
+            "requested_tabs": 1,
+            "running_local_processes": 1,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6083,
+            "tabs": 1,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 82305024.0,
+          "steady_working_set_bytes": 145235968.0,
+          "sampled_peak_private_bytes": 82305024,
+          "peak_working_set_bytes": 145264640,
+          "steady_cpu_percent_of_one_core": 4.87939996964553,
+          "steady_tree_private_bytes": 84692992.0,
+          "steady_tree_working_set_bytes": 158990336.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 3
+        },
+        {
+          "repeat": 2,
+          "tabs": 1,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1152,
+            "main_to_first_frame_ms": 1189,
+            "qt": "6.11.2",
+            "requested_tabs": 1,
+            "running_local_processes": 1,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6142,
+            "tabs": 1,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 82518016.0,
+          "steady_working_set_bytes": 144773120.0,
+          "sampled_peak_private_bytes": 82518016,
+          "peak_working_set_bytes": 144801792,
+          "steady_cpu_percent_of_one_core": 4.876298577818404,
+          "steady_tree_private_bytes": 84905984.0,
+          "steady_tree_working_set_bytes": 158527488.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 3
+        },
+        {
+          "repeat": 3,
+          "tabs": 1,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1126,
+            "main_to_first_frame_ms": 1168,
+            "qt": "6.11.2",
+            "requested_tabs": 1,
+            "running_local_processes": 1,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6137,
+            "tabs": 1,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 82833408.0,
+          "steady_working_set_bytes": 145645568.0,
+          "sampled_peak_private_bytes": 82833408,
+          "peak_working_set_bytes": 145674240,
+          "steady_cpu_percent_of_one_core": 1.6268686864471,
+          "steady_tree_private_bytes": 85221376.0,
+          "steady_tree_working_set_bytes": 159399936.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 3
+        },
+        {
+          "repeat": 1,
+          "tabs": 5,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1242,
+            "main_to_first_frame_ms": 1299,
+            "qt": "6.11.2",
+            "requested_tabs": 5,
+            "running_local_processes": 5,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6231,
+            "tabs": 5,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 109760512.0,
+          "steady_working_set_bytes": 173006848.0,
+          "sampled_peak_private_bytes": 109785088,
+          "peak_working_set_bytes": 173039616,
+          "steady_cpu_percent_of_one_core": 9.75442164029106,
+          "steady_tree_private_bytes": 121765888.0,
+          "steady_tree_working_set_bytes": 241807360.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 11
+        },
+        {
+          "repeat": 2,
+          "tabs": 5,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1268,
+            "main_to_first_frame_ms": 1321,
+            "qt": "6.11.2",
+            "requested_tabs": 5,
+            "running_local_processes": 5,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6274,
+            "tabs": 5,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 109957120.0,
+          "steady_working_set_bytes": 171220992.0,
+          "sampled_peak_private_bytes": 109957120,
+          "peak_working_set_bytes": 171253760,
+          "steady_cpu_percent_of_one_core": 4.876113431239964,
+          "steady_tree_private_bytes": 121950208.0,
+          "steady_tree_working_set_bytes": 240001024.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 11
+        },
+        {
+          "repeat": 3,
+          "tabs": 5,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1347,
+            "main_to_first_frame_ms": 1404,
+            "qt": "6.11.2",
+            "requested_tabs": 5,
+            "running_local_processes": 5,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6340,
+            "tabs": 5,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 110346240.0,
+          "steady_working_set_bytes": 171941888.0,
+          "sampled_peak_private_bytes": 110346240,
+          "peak_working_set_bytes": 171966464,
+          "steady_cpu_percent_of_one_core": 9.739362201112566,
+          "steady_tree_private_bytes": 122306560.0,
+          "steady_tree_working_set_bytes": 240713728.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 11
+        },
+        {
+          "repeat": 1,
+          "tabs": 20,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1823,
+            "main_to_first_frame_ms": 1944,
+            "qt": "6.11.2",
+            "requested_tabs": 20,
+            "running_local_processes": 20,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6820,
+            "tabs": 20,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 212918272.0,
+          "steady_working_set_bytes": 274317312.0,
+          "sampled_peak_private_bytes": 212918272,
+          "peak_working_set_bytes": 274337792,
+          "steady_cpu_percent_of_one_core": 9.725534523172117,
+          "steady_tree_private_bytes": 260866048.0,
+          "steady_tree_working_set_bytes": 549392384.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 41
+        },
+        {
+          "repeat": 2,
+          "tabs": 20,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1807,
+            "main_to_first_frame_ms": 1918,
+            "qt": "6.11.2",
+            "requested_tabs": 20,
+            "running_local_processes": 20,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6808,
+            "tabs": 20,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 213299200.0,
+          "steady_working_set_bytes": 274771968.0,
+          "sampled_peak_private_bytes": 213299200,
+          "peak_working_set_bytes": 274796544,
+          "steady_cpu_percent_of_one_core": 12.939725516306174,
+          "steady_tree_private_bytes": 261271552.0,
+          "steady_tree_working_set_bytes": 549883904.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 41
+        },
+        {
+          "repeat": 3,
+          "tabs": 20,
+          "startup": {
+            "height": 760,
+            "main_to_engine_ready_ms": 1791,
+            "main_to_first_frame_ms": 1892,
+            "qt": "6.11.2",
+            "requested_tabs": 20,
+            "running_local_processes": 20,
+            "schema": 1,
+            "sessions": [
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 0
+              },
+              {
+                "columns": 135,
+                "fixture_output_complete": false,
+                "history_accounted_bytes": 0,
+                "history_budget_bytes": 1048576,
+                "history_lines": 0,
+                "logging_enabled": false,
+                "rows": 35,
+                "viewport_cache_bytes": 2305720
+              }
+            ],
+            "settled_at_ms": 6781,
+            "tabs": 20,
+            "version": "0.1.0-alpha.1",
+            "width": 1280
+          },
+          "steady_private_bytes": 213127168.0,
+          "steady_working_set_bytes": 274948096.0,
+          "sampled_peak_private_bytes": 213127168,
+          "peak_working_set_bytes": 274989056,
+          "steady_cpu_percent_of_one_core": 17.617587595448473,
+          "steady_tree_private_bytes": 261066752.0,
+          "steady_tree_working_set_bytes": 550017024.0,
+          "process_tree_complete": true,
+          "sampled_peak_process_count": 41
+        }
+      ]
+    }
+  }
+}

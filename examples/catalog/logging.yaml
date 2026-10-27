@@ -1,0 +1,16 @@
+schema: 1
+
+profiles:
+  - id: xshell-style
+    name: Xshell-style plain session log
+    auto_start: true
+    root: "~/Documents/8bitShell/Logs"
+    directory: "{session}"
+    file_name: "{session}_{date}_{time}.log"
+    existing_file: append
+    timestamps: none
+    strip_ansi: true
+    rotation:
+      max_bytes: 52428800
+      keep: 5
+

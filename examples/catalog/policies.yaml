@@ -1,0 +1,34 @@
+schema: 1
+
+policies:
+  - id: example-cyberark
+    name: Example privileged access route
+    enabled: true
+    priority: 100
+    profile: example-company
+    match:
+      all_tags: [cyberark]
+    variables:
+      gateway: psmp.example.test
+    route:
+      backend: openssh
+      host: "{{policy.gateway}}"
+      port: 22
+      user: "{{request.operator}}@{{target.account}}@{{target.host}}"
+      forward_x11: true
+      trusted_x11: false
+    conversation:
+      - id: connection-reason
+        expect: "(?i)reason\\s*:"
+        action: ask
+        label: Connection reason
+        sensitive: false
+        timeout_ms: 30000
+
+      - id: password
+        expect: "(?i)password\\s*:"
+        action: ask_secret
+        label: Privileged access password
+        sensitive: true
+        timeout_ms: 60000
+

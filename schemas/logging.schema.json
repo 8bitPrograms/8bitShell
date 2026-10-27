@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bitshell.local/schemas/logging.schema.json",
+  "title": "8bitShell logging profiles",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profiles"],
+  "properties": {
+    "schema": { "const": 1 },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "root", "file_name"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+          "name": { "type": "string" },
+          "auto_start": { "type": "boolean", "default": true },
+          "root": { "type": "string", "minLength": 1 },
+          "directory": { "type": "string", "default": "{session}" },
+          "file_name": { "type": "string", "minLength": 1 },
+          "existing_file": { "enum": ["append", "truncate"] },
+          "timestamps": { "enum": ["none", "each_line"] },
+          "strip_ansi": { "type": "boolean", "default": true },
+          "rotation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "max_bytes": { "type": "integer", "minimum": 0 },
+              "keep": { "type": "integer", "minimum": 0, "maximum": 100 }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

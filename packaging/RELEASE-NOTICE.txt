@@ -1,0 +1,11 @@
+8bitShell - local evaluation package
+
+The project license has not been selected. This notice is not a license grant.
+Do not publish or redistribute this evaluation package until the project owner
+has chosen a license and reviewed the deployed third-party components, notices
+and corresponding source obligations. Third-party components retain their own
+licenses; this notice does not replace or restrict those licenses.
+
+The application is not a certified or independently audited security product.
+Windows previews require the Microsoft Visual C++ x64 Redistributable and the
+Windows OpenSSH Client, installed through the normal approved OS process.
