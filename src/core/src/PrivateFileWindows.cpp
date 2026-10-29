@@ -105,6 +105,11 @@ bool regular(HANDLE file, bool directory, bool singleLink, QString& error) {
     }
     return true;
 }
+#ifndef FILE_RENAME_REPLACE_IF_EXISTS
+#define FILE_RENAME_REPLACE_IF_EXISTS 0x00000001
+#define FILE_RENAME_POSIX_SEMANTICS 0x00000002
+#define FILE_RENAME_IGNORE_READONLY_ATTRIBUTE 0x00000040
+#endif
 bool renameWith(HANDLE file, const std::wstring& name, bool replace, bool extended) {
     const auto nameBytes = name.size() * sizeof(wchar_t);
     std::vector<unsigned char> storage(offsetof(FILE_RENAME_INFO, FileName) + nameBytes + sizeof(wchar_t));
