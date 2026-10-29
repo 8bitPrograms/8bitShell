@@ -90,7 +90,13 @@ def main():
     env["QML_IMPORT_PATH"]=str(sdk/"qml")
     env["QML2_IMPORT_PATH"]=str(sdk/"qml")
     testtemp=build/"test-temp";testtemp.mkdir(exist_ok=True)
-    env["TEMP"]=str(testtemp);env["TMP"]=str(testtemp);env["TMPDIR"]=str(testtemp)
+    if system=="windows":
+        env["TEMP"]=str(testtemp);env["TMP"]=str(testtemp)
+    else:
+        # QLocalServer file sockets live in the temp directory. sun_path is only
+        # 108 bytes, and the workspace path is longer than that.
+        short=Path("/tmp/b8-ci");short.mkdir(mode=0o700,exist_ok=True)
+        env["TEMP"]=str(short);env["TMP"]=str(short);env["TMPDIR"]=str(short)
     if system=="windows":env["QT_QPA_FONTDIR"]=str(Path(os.environ["WINDIR"])/"Fonts")
     elif system=="linux":env["QT_QPA_FONTDIR"]="/usr/share/fonts/truetype/dejavu"
     run(["ctest","--test-dir",build,"--output-on-failure"],env=env)

@@ -83,8 +83,9 @@ PasswordBroker::start(const QVariantMap& profile, const QByteArray& password) {
     random.fill(0);
     const auto socketName = QStringLiteral("8bitshell-password-") + QUuid::createUuid().toString(QUuid::Id128);
     if (!m_server.listen(socketName)) {
+        const auto reason = m_server.errorString();
         stop();
-        return std::unexpected(QStringLiteral("Cannot create the private SSH password channel."));
+        return std::unexpected(QStringLiteral("Cannot create the private SSH password channel: %1").arg(reason));
     }
     // Copy into broker-owned storage so wiping it never mutates the caller's
     // input. OpenSSH creates this prompt itself for password authentication;

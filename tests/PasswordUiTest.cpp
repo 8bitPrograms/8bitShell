@@ -39,6 +39,14 @@ QVariantMap target() {
             {QStringLiteral("user"), QStringLiteral("fixture-user")}, {QStringLiteral("port"), 22},
             {QStringLiteral("connection"), QVariantMap{{QStringLiteral("mode"), QStringLiteral("direct")}}}};
 }
+QObject* visualNamed(QQuickItem* item, const QString& name) {
+    if (!item) return nullptr;
+    if (item->objectName() == name) return item;
+    for (auto* child : item->childItems()) {
+        if (auto* found = visualNamed(child, name)) return found;
+    }
+    return nullptr;
+}
 QByteArray prompt(const TerminalView& terminal) {
     const auto token = TerminalTestAccess::integrationToken(terminal).toLatin1();
     return QByteArray("\r\nPS> \x1b]777;8bitshell;") + token + ";powershell\a"
@@ -59,7 +67,13 @@ private slots:
     void localSuggestionsDescribePasswordAuthenticationWithoutConnecting();
 private:
     QVariantList fixtureCommand() const;
-    QObject* named(const QString& name) const { return m_window ? m_window->findChild<QObject*>(name) : nullptr; }
+    QObject* named(const QString& name) const {
+        if (!m_window) return nullptr;
+        // Repeater delegates are visual children. Their QObject parent is the
+        // delegate model, so findChild on the window does not see them.
+        if (auto* found = m_window->findChild<QObject*>(name)) return found;
+        return visualNamed(m_window->contentItem(), name);
+    }
     QObject* editor() const { return named(QStringLiteral("sessionEditorDialog")); }
     QQuickItem* item(const QString& name) const { return qobject_cast<QQuickItem*>(named(name)); }
     TerminalView* terminal() const {
