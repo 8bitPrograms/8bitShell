@@ -36,6 +36,21 @@ int wmain(int argc, wchar_t** argv) {
         std::printf("INPUT=");
         for (DWORD n = 0; n < count; ++n) std::printf("%02x", unsigned(static_cast<unsigned char>(data[n])));
         std::printf("\n");
+    } else if (mode == L"unicode") {
+        // Server 2022 ConPTY turns non-ASCII ReadFile input into NUL while
+        // ENABLE_VIRTUAL_TERMINAL_INPUT is set. ReadConsoleW is the real
+        // contract: the host writes UTF-8 and the console returns UTF-16.
+        const HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+        if (!SetConsoleMode(input, ENABLE_EXTENDED_FLAGS)) return 3;
+        std::printf("RAW_READY\n"); std::fflush(stdout);
+        wchar_t wide[32]{}; DWORD count = 0;
+        if (!ReadConsoleW(input, wide, 31, &count, nullptr) || !count) return 4;
+        char utf8[128]{};
+        const int bytes = WideCharToMultiByte(CP_UTF8, 0, wide, int(count), utf8, int(sizeof(utf8)), nullptr, nullptr);
+        if (bytes <= 0) return 5;
+        std::printf("INPUT=");
+        for (int n = 0; n < bytes; ++n) std::printf("%02x", unsigned(static_cast<unsigned char>(utf8[n])));
+        std::printf("\n");
     } else if (mode == L"broadcast" || mode == L"profile") {
         const HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
         if (!SetConsoleMode(input, ENABLE_VIRTUAL_TERMINAL_INPUT)) return 3;

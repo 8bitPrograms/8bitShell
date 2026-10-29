@@ -15,6 +15,7 @@
 #ifdef Q_OS_WIN
 #include <fcntl.h>
 #include <io.h>
+#include <windows.h>
 #endif
 
 using namespace bitshell::core;
@@ -143,7 +144,11 @@ void PasswordAuxiliaryTest::savedPasswordReachesOnlyAskpassAndBatchRetiresBroker
     SftpController files;
     files.setTransportExecutableForTesting(QCoreApplication::applicationFilePath());
     files.connectToProfile(profile());
-    QTRY_COMPARE_WITH_TIMEOUT(files.state(), SftpController::State::Ready, 15000);
+    const bool settled = QTest::qWaitFor([&files] {
+        return files.state() == SftpController::State::Ready || files.state() == SftpController::State::Error;
+    }, 15000);
+    QVERIFY2(settled && files.state() == SftpController::State::Ready,
+             qPrintable(QStringLiteral("state %1: %2").arg(int(files.state())).arg(files.statusText())));
     QVERIFY(files.connected());
     QCOMPARE(files.count(), 1);
     const auto starts = records().split('\n');
@@ -190,6 +195,10 @@ void PasswordAuxiliaryTest::failedMonitoringDoesNotRetryThePassword() {
 }
 
 int main(int argc, char* argv[]) {
+#ifdef Q_OS_WIN
+    // A missing Qt DLL otherwise opens a modal loader dialog and holds the test until ctest kills it.
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+#endif
     QCoreApplication app(argc, argv);
     if (qEnvironmentVariableIsSet(fixtureMode)) return runFixture();
     QCoreApplication::setOrganizationName(QStringLiteral("bitshell-tests"));

@@ -28,10 +28,11 @@ $env:VSINSTALLDIR=$vs
 $sdk=Join-Path $repo "tooling/qt-sdk-$Architecture"
 Push-Location $repo
 try{
- & $pythonExe scripts/ci/build-qt.py --prefix $sdk --jobs 2
+ $jobs=[Math]::Max(2,[Math]::Min(4,[int]$env:NUMBER_OF_PROCESSORS))
+ & $pythonExe scripts/ci/build-qt.py --prefix $sdk --jobs $jobs
  if($LASTEXITCODE){throw 'Qt SDK build failed'}
  if($SdkOnly){return}
- $args=@('scripts/ci/build.py','--qt-root',$sdk,'--jobs','2')
+ $args=@('scripts/ci/build.py','--qt-root',$sdk,'--jobs',"$jobs")
  if($BuildOnly){$args+='--build-only'}
  & $pythonExe @args
  if($LASTEXITCODE){throw 'Application build/test/package failed'}

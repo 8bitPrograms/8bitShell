@@ -326,7 +326,7 @@ void PasswordUiTest::exportedAndImportedProfilesNeverCarryThePassword() {
     QVERIFY(!document.contains(testPassword));
     QVERIFY(!document.contains("password:"));
     QVERIFY(!document.contains("credentialRef"));
-    QVERIFY(document.contains("authenticationMode: password"));
+    QVERIFY2(document.contains("authenticationMode: password"), document.constData());
     QFile catalog(m_sessions->storagePath());
     QVERIFY(catalog.open(QIODevice::ReadOnly));
     QVERIFY(!catalog.readAll().contains(testPassword));

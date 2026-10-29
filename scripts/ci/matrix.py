@@ -9,5 +9,9 @@ targets=[
 ]
 target=os.environ.get("BUILD_TARGET","all")
 if target not in ("all","windows","linux","macos"):raise SystemExit("Invalid build target")
+# Pull requests share the org's five macOS runner slots. Keep those for main,
+# where the Qt cache is actually saved. workflow_dispatch can still select macOS.
+if os.environ.get("GITHUB_EVENT_NAME")=="pull_request":
+    targets=[t for t in targets if t["os"]!="macos"]
 value=json.dumps({"include":[t for t in targets if target=="all" or t["os"]==target]},separators=(",",":"))
 with open(os.environ["GITHUB_OUTPUT"],"a") as f:f.write("native="+value+"\n")

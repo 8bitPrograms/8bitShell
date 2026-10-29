@@ -51,18 +51,20 @@ private slots:
     }
     void controlInput_data() {
         QTest::addColumn<QByteArray>("input");
-        QTest::newRow("backspace-bs") << QByteArray(1, '\x08');
-        QTest::newRow("backspace-del") << QByteArray(1, '\x7f');
-        QTest::newRow("return") << QByteArray(1, '\r');
-        QTest::newRow("up-arrow") << QByteArray("\x1b[A");
-        QTest::newRow("utf8") << QStringLiteral("ç").toUtf8();
+        QTest::addColumn<QString>("mode");
+        QTest::newRow("backspace-bs") << QByteArray(1, '\x08') << QStringLiteral("raw");
+        QTest::newRow("backspace-del") << QByteArray(1, '\x7f') << QStringLiteral("raw");
+        QTest::newRow("return") << QByteArray(1, '\r') << QStringLiteral("raw");
+        QTest::newRow("up-arrow") << QByteArray("\x1b[A") << QStringLiteral("raw");
+        QTest::newRow("utf8") << QStringLiteral("ç").toUtf8() << QStringLiteral("unicode");
     }
     void controlInput() {
         QFETCH(QByteArray, input);
+        QFETCH(QString, mode);
         PtyProcess p; QByteArray output;
         connect(&p, &PtyProcess::dataReceived, this, [&](const QByteArray& b) { output += b; });
         QSignalSpy exit(&p, &PtyProcess::finished); QString error;
-        QVERIFY2(p.start(fixture(), {QStringLiteral("raw")}, 80, 24, &error), qPrintable(error));
+        QVERIFY2(p.start(fixture(), {mode}, 80, 24, &error), qPrintable(error));
         QTRY_VERIFY_WITH_TIMEOUT(output.contains("RAW_READY"), 10000);
         p.write(input);
         QTRY_COMPARE_WITH_TIMEOUT(exit.size(), 1, 10000);

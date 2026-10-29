@@ -29,7 +29,9 @@ permissions:
   contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Main must be allowed to finish. Cancelling it throws away the Qt cache,
+  # and the next macOS job then rebuilds Qt from source before it can be saved.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   plan:
     runs-on: ubuntu-22.04
@@ -117,8 +119,13 @@ jobs:
         if: matrix.os != 'windows'
         run: |
           mkdir -p build
+          jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+          if [ "$(uname -s)" = Darwin ] && [ "$jobs" -gt 3 ]; then jobs=3; fi
+          if [ "$jobs" -gt 4 ]; then jobs=4; fi
+          if [ "$jobs" -lt 2 ]; then jobs=2; fi
+          echo "JOBS=$jobs" >> "$GITHUB_ENV"
           set +e
-          python scripts/ci/build-qt.py --prefix "tooling/qt-sdk-$RELEASE_ARCH" --jobs 2 > build/qt-sdk-log.txt 2>&1
+          python scripts/ci/build-qt.py --prefix "tooling/qt-sdk-$RELEASE_ARCH" --jobs "$jobs" > build/qt-sdk-log.txt 2>&1
           code=$?
           set -e
           tail -n 80 build/qt-sdk-log.txt
@@ -161,7 +168,7 @@ jobs:
         run: |
           args=()
           if [ "$BUILD_PACKAGES" != true ]; then args+=(--build-only); fi
-          python scripts/ci/build.py --qt-root "tooling/qt-sdk-$RELEASE_ARCH" --jobs 2 "${args[@]}"
+          python scripts/ci/build.py --qt-root "tooling/qt-sdk-$RELEASE_ARCH" --jobs "${JOBS:-2}" "${args[@]}"
       - name: Test Linux bundle on supported distribution families without a Qt SDK
         if: matrix.os == 'linux' && github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.packages)
         run: bash scripts/ci/smoke-distros.sh

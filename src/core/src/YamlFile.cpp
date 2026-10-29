@@ -100,6 +100,19 @@ QStringList readableKeys(const QVariantMap& map) {
     for (auto it = map.cbegin(); it != map.cend(); ++it) if (!keys.contains(it.key())) keys << it.key();
     return keys;
 }
+bool mustQuoteScalar(const QString& text) {
+    // Quoted text stays a string. Plain true/false/null/numbers would come back
+    // as a different YAML type and fail the catalog round trip.
+    if (text.isEmpty() || text == u"~" || text == u"true" || text == u"false"
+        || text.compare(u"null", Qt::CaseInsensitive) == 0
+        || text.compare(u".nan", Qt::CaseInsensitive) == 0
+        || text.compare(u".inf", Qt::CaseInsensitive) == 0
+        || text.compare(u"-.inf", Qt::CaseInsensitive) == 0
+        || text.compare(u"+.inf", Qt::CaseInsensitive) == 0) return true;
+    static const QRegularExpression integer(QStringLiteral("^-?(0|[1-9][0-9]*)$"));
+    static const QRegularExpression number(QStringLiteral("^-?(0|[1-9][0-9]*)\\.[0-9]+([eE][+-]?[0-9]+)?$"));
+    return integer.match(text).hasMatch() || number.match(text).hasMatch();
+}
 void emitValue(YAML::Emitter& out, const QVariant& value, QList<qsizetype>& stripMarkers) {
     switch (value.typeId()) {
     case QMetaType::QVariantMap: {
@@ -136,9 +149,10 @@ void emitValue(YAML::Emitter& out, const QVariant& value, QList<qsizetype>& stri
                 const auto index = QByteArray(out.c_str(), static_cast<qsizetype>(out.size())).indexOf("|\n", start);
                 if (index >= 0) stripMarkers << index + 1;
             }
-        } else out << YAML::DoubleQuoted << text.toStdString();
+        } else if (mustQuoteScalar(text)) out << YAML::DoubleQuoted << text.toStdString();
+        else out << text.toStdString();
     }
-    }
+}
 }
 }
 YamlFile::YamlFile(QString path, QString kind, int version) : m_path(std::move(path)), m_kind(std::move(kind)), m_version(version) {}

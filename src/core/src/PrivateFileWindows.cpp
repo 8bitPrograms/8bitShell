@@ -105,16 +105,48 @@ bool regular(HANDLE file, bool directory, bool singleLink, QString& error) {
     }
     return true;
 }
-bool renameHandle(HANDLE file, const QString& destination, bool replace) {
-    const auto name = QDir::toNativeSeparators(destination).toStdWString();
+bool renameWith(HANDLE file, const std::wstring& name, bool replace, bool extended) {
     const auto nameBytes = name.size() * sizeof(wchar_t);
     std::vector<unsigned char> storage(offsetof(FILE_RENAME_INFO, FileName) + nameBytes + sizeof(wchar_t));
+    std::memset(storage.data(), 0, storage.size());
     auto* rename = reinterpret_cast<FILE_RENAME_INFO*>(storage.data());
-    rename->ReplaceIfExists = replace ? TRUE : FALSE;
     rename->RootDirectory = nullptr;
     rename->FileNameLength = DWORD(nameBytes);
     std::memcpy(rename->FileName, name.data(), nameBytes);
-    return SetFileInformationByHandle(file, FileRenameInfo, rename, DWORD(storage.size()));
+    if (!extended) {
+        rename->ReplaceIfExists = replace ? TRUE : FALSE;
+        return SetFileInformationByHandle(file, FileRenameInfo, rename, DWORD(storage.size()));
+    }
+    rename->Flags = FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS
+        | FILE_RENAME_IGNORE_READONLY_ATTRIBUTE;
+    return SetFileInformationByHandle(file, FileRenameInfoEx, rename, DWORD(storage.size()));
+}
+bool renameHandle(HANDLE file, const QString& destination, bool replace) {
+    const auto win32 = QDir::toNativeSeparators(destination).toStdWString();
+    if (!replace) return renameWith(file, win32, false, false);
+    // NT path + FileRenameInfoEx can replace a file the parent may delete even
+    // when that file's own inherited ACL does not grant DELETE. Fall back to the
+    // Win32 rename that already works for files this process created.
+    if (renameWith(file, std::wstring(L"\\??\\") + win32, true, true)) return true;
+    return renameWith(file, win32, true, false);
+}
+bool allowReplace(const std::wstring& native, const Security& security, QString& error) {
+    Handle writable(CreateFileW(native.c_str(), READ_CONTROL | WRITE_DAC | FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+    if (writable.valid() && security.protect(writable.value, error)) return true;
+    error.clear();
+    PACL acl = nullptr; BOOL present = FALSE, defaulted = FALSE;
+    if (!GetSecurityDescriptorDacl(security.descriptor, &present, &acl, &defaulted) || !present || !acl) {
+        error = QStringLiteral("Cannot build the private file DACL."); return false;
+    }
+    // The owner can replace an inherited DACL that never granted WRITE_DAC.
+    const DWORD result = SetNamedSecurityInfoW(const_cast<LPWSTR>(native.c_str()), SE_FILE_OBJECT,
+        DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, acl, nullptr);
+    if (result != ERROR_SUCCESS) {
+        error = QStringLiteral("Cannot restrict Windows file access (%1).").arg(result); return false;
+    }
+    return true;
 }
 struct Parents {
     QString path;
@@ -198,7 +230,8 @@ bool PrivateFile::write(const QString& path, const QByteArray& bytes, QString& e
         Handle existing(CreateFileW(target.c_str(), FILE_READ_ATTRIBUTES | READ_CONTROL, FILE_SHARE_READ | FILE_SHARE_WRITE,
             nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
         if (existing.valid()) {
-            if (!regular(existing.value, false, true, error) || !parents.security.owns(existing.value, error)) return false;
+            if (!regular(existing.value, false, true, error) || !parents.security.owns(existing.value, error)
+                || !allowReplace(target, parents.security, error)) return false;
         } else if (GetLastError() != ERROR_FILE_NOT_FOUND) { error = failure("Inspect write destination"); return false; }
     }
     const auto temporary = nativePath(QFileInfo(parents.path).absolutePath() + QStringLiteral("/.bitshell-save-") + QUuid::createUuid().toString(QUuid::Id128));
