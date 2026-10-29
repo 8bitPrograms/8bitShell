@@ -6,7 +6,10 @@ target_sources(bitshell_core
         src/ConnectionRouting.cpp
         src/PersonalProfile.cpp
         src/SshKeyStore.cpp
+        src/PasswordStore.cpp
+        src/PasswordBroker.cpp
         src/SshSecurity.cpp
+        src/NativeSshCommand.cpp
         src/Platform.cpp
         src/AppSettings.cpp
         src/YamlFile.cpp
@@ -29,7 +32,10 @@ target_sources(bitshell_core
             include/bitshell/core/ConnectionRouting.h
             include/bitshell/core/PersonalProfile.h
             include/bitshell/core/SshKeyStore.h
+            include/bitshell/core/PasswordStore.h
+            include/bitshell/core/PasswordBroker.h
             include/bitshell/core/SshSecurity.h
+            include/bitshell/core/NativeSshCommand.h
             include/bitshell/core/PrivateFile.h
             include/bitshell/core/Platform.h
             include/bitshell/core/BoundedRegex.h
@@ -51,9 +57,12 @@ target_sources(bitshell_core
 
 if(WIN32)
     target_sources(bitshell_core PRIVATE src/PrivateFileWindows.cpp)
-    target_link_libraries(bitshell_core PRIVATE advapi32 iphlpapi)
+    target_link_libraries(bitshell_core PRIVATE advapi32 iphlpapi crypt32)
 else()
     target_sources(bitshell_core PRIVATE src/PrivateFile.cpp)
+endif()
+if(APPLE)
+    target_link_libraries(bitshell_core PRIVATE "-framework Security" "-framework CoreFoundation")
 endif()
 
 target_link_libraries(bitshell_core

@@ -23,7 +23,10 @@ public:
     // with Windows Terminal and conhost. SaveAtExit never flushes when a tab is
     // closed, so interactive launches switch that one default to incremental
     // append. Existing history lines and an explicit user setting are left alone.
-    static QStringList persistentHistoryArguments(const QString& program, const QStringList& arguments);
+    // A nonempty per-launch token also installs session-only prompt markers in
+    // supported interactive shells. Explicit commands are always left alone.
+    static QStringList persistentHistoryArguments(const QString& program, const QStringList& arguments,
+                                                 const QString& shellIntegrationToken = {});
     static QString trustedExecutablePath();
     static QString configRoot();
     // Application settings are isolated under the 8bitshell profile.

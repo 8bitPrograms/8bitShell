@@ -1,4 +1,5 @@
 #pragma once
+#include <bitshell/terminal/Win32Input.h>
 
 #include <QColor>
 #include <QByteArray>
@@ -9,6 +10,7 @@
 #include <QPoint>
 #include <QQuickPaintedItem>
 #include <QString>
+#include <QSet>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -18,6 +20,7 @@
 #include <bitshell/terminal/ScrollbackLine.h>
 
 #include <deque>
+#include <memory>
 #include <vector>
 
 #include <vterm.h>
@@ -27,6 +30,8 @@ class QKeyEvent;
 class QMouseEvent;
 class QPainter;
 class QWheelEvent;
+
+namespace bitshell::core { class PasswordBroker; }
 
 namespace bitshell::terminal {
 
@@ -42,6 +47,10 @@ class TerminalView : public QQuickPaintedItem {
     Q_PROPERTY(int rows READ rows NOTIFY gridSizeChanged)
     Q_PROPERTY(bool running READ isRunning NOTIFY runningChanged)
     Q_PROPERTY(bool remoteSession READ remoteSession NOTIFY broadcastStateChanged)
+    Q_PROPERTY(QVariantMap currentSshConnection READ currentSshConnection NOTIFY currentSshConnectionChanged)
+    Q_PROPERTY(QVariantMap localSshQuery READ localSshQuery NOTIFY localSshQueryChanged)
+    Q_PROPERTY(bool localSshSuggestionsActive MEMBER m_localSshSuggestionsActive)
+    Q_PROPERTY(bool localSshSelectionReady MEMBER m_localSshSelectionReady)
     Q_PROPERTY(bool broadcastArmed READ broadcastArmed NOTIFY broadcastStateChanged)
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
     Q_PROPERTY(QString activeTarget READ activeTarget NOTIFY activeTargetChanged)
@@ -108,6 +117,10 @@ public:
     [[nodiscard]] int rows() const;
     [[nodiscard]] bool isRunning() const;
     bool remoteSession() const { return m_managedSsh; }
+    QVariantMap currentSshConnection() const { return m_currentSshConnection; }
+    QVariantMap localSshQuery() const { return m_localSshQuery; }
+    Q_INVOKABLE void dismissLocalSsh();
+    Q_INVOKABLE bool runLocalSsh(const QVariantMap& profile, const QVariantMap& expectedQuery);
     bool broadcastArmed() const { return m_broadcastArmed && m_managedSsh && isRunning(); }
     Q_INVOKABLE bool setBroadcastArmed(bool enabled);
     [[nodiscard]] QString title() const;
@@ -194,6 +207,12 @@ public:
     void paint(QPainter* painter) override;
 
 signals:
+    void currentSshConnectionChanged();
+    void localSshQueryChanged();
+    void localSshNavigate(int direction);
+    void localSshAccept();
+    void localSshDismiss();
+    void localSshError(const QString& message);
     void broadcastStateChanged();
     void inputSettingsChanged();
     void selectionChanged();
@@ -236,6 +255,7 @@ signals:
 protected:
     void geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
     void focusInEvent(QFocusEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
@@ -262,6 +282,8 @@ private:
 
     void initializeTerminal();
     void launchSshProfile(const QVariantMap& profile);
+    static QVariantMap sshConnectionSummary(const QVariantMap& profile, const QString& mode);
+    void setCurrentSshConnection(const QVariantMap& connection);
     void requestPaste(const QString& text, bool appendEnter);
     void writePaste(const QString& text, bool appendEnter);
     void resetTerminal();
@@ -269,6 +291,13 @@ private:
     QFont terminalFont(bool bold = false, bool italic = false) const;
     void recalculateGrid();
     void handleProcessData(const QByteArray& data);
+    void refreshLocalSshQuery();
+    void clearLocalSshQuery();
+    QString localInputTextLocked() const;
+    void processShellMarker(int command, VTermStringFragment fragment);
+    void completePendingLocalSsh();
+    void cancelPendingLocalSsh();
+    void sendLocalControlC();
     void handleProcessFinished(int exitCode);
     void setTitle(const QString& title);
     void setActiveTarget(const QString& target);
@@ -282,7 +311,9 @@ private:
                        const QStringList& arguments,
                        const QString& targetLabel,
                        const QString& startingStatus, bool managedSsh = false,
-                       bool interactiveShell = false, const QString& workingDirectory = {});
+                       bool interactiveShell = false, const QString& workingDirectory = {},
+                       const QProcessEnvironment& environmentOverrides = {});
+    void stopPasswordBroker();
     void rebuildSearchMatchesLocked(bool incremental = false);
     void revealCurrentSearchMatchLocked();
     void paintContent(QPainter* painter, const QBitArray* dirtyRows = nullptr);
@@ -312,6 +343,7 @@ private:
     void sendMousePosition(const QPointF& position, Qt::KeyboardModifiers modifiers);
 
     static void outputCallback(const char* bytes, size_t length, void* user);
+    static int oscFallbackCallback(int command, VTermStringFragment fragment, void* user);
     static int damageCallback(VTermRect rect, void* user);
     static int moveRectCallback(VTermRect destination, VTermRect source, void* user);
     static int moveCursorCallback(VTermPos position,
@@ -332,6 +364,8 @@ private:
     bool m_performanceFixtureComplete = false;
     QByteArray m_performanceTail;
     PtyProcess m_process;
+    std::unique_ptr<bitshell::core::PasswordBroker> m_passwordBroker;
+    std::unique_ptr<bitshell::core::PasswordBroker> m_pendingPasswordBroker;
     bitshell::core::SessionLogger m_logger;
     bitshell::core::HighlightEngine m_highlightEngine;
     QList<bitshell::core::HighlightRule> m_highlightRules =
@@ -341,6 +375,7 @@ private:
     VTerm* m_terminal = nullptr;
     VTermScreen* m_screen = nullptr;
     VTermScreenCallbacks m_screenCallbacks{};
+    VTermStateFallbacks m_stateFallbacks{};
 
     std::deque<ScrollbackLine> m_scrollback;
     std::size_t m_scrollbackBytes = 0;
@@ -386,6 +421,30 @@ private:
     QImage m_contentCache; // Active viewport only; capped at 16 MiB and released when hidden.
     bool m_contentDirty = true;
     bool m_processingOutput = false;
+    Win32Input m_win32Input;
+    QString m_shellIntegrationToken;
+    QString m_integratedShellKind;
+    QByteArray m_shellMarkerFragment;
+    bool m_localPromptActive = false;
+    bool m_alternateScreen = false;
+    quint64 m_localPromptGeneration = 0;
+    quint64 m_localInputRow = 0;
+    int m_localInputColumn = -1;
+    QVariantMap m_localSshQuery;
+    QVariantMap m_currentSshConnection;
+    bool m_currentSshConnectionNotificationPending = false;
+    bool m_localSshSuggestionsActive = false;
+    bool m_localSshSelectionReady = false;
+    QString m_dismissedLocalSshCommand;
+    QString m_lastLocalInput;
+    QString m_pendingLocalSshCommand;
+    QString m_pendingLocalSshStatus;
+    QVariantMap m_pendingLocalSshConnection;
+    QString m_pendingLocalSshShellKind;
+    quint64 m_pendingLocalSshGeneration = 0;
+    quint64 m_localSshRequestSerial = 0;
+    quint64 m_localSshRefreshSerial = 0;
+    QSet<int> m_consumedLocalSshKeys;
     QBitArray m_dirtyRows;
     quint64 m_contentPaintCount = 0;
     quint64 m_sceneUpdateCount = 0;

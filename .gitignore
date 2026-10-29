@@ -23,3 +23,9 @@ docs/NEXT-SESSION.md
 .env
 
 tooling/
+
+# Additional local CMake build and output directories.
+/build-*/
+/cmake-build-*/
+/out/
+/CMakeFiles/

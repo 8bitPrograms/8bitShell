@@ -14,6 +14,7 @@ ColumnLayout {
         {id: "find", label: "Find"}, {id: "newTab", label: "New terminal"},
         {id: "closeTab", label: "Close terminal"}, {id: "nextTab", label: "Next terminal"},
         {id: "quickConnect", label: "Quick connect"},
+        {id: "commandPalette", label: "Command palette"},
         {id: "zoomIn", label: "Zoom in"}, {id: "zoomOut", label: "Zoom out"}
     ]
     AppSwitch {

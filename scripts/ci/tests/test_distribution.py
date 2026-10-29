@@ -85,8 +85,8 @@ class ReleaseContractTests(unittest.TestCase):
     stage=self.t/cpu;out=self.t/("output-"+cpu);(stage/"bin").mkdir(parents=True)
     header=bytearray(512);header[:2]=b"MZ";struct.pack_into("<I",header,0x3c,0x80);header[0x80:0x84]=b"PE\0\0";struct.pack_into("<H",header,0x84,machine)
     (stage/"bin"/(app+".exe")).write_bytes(header)
-    files=["bin/Qt6Core.dll","bin/msvcp140.dll","bin/vcruntime140.dll","bin/qt.conf","plugins/platforms/qwindows.dll","Start-Portable.cmd","profile/settings.ini"]
-    files+=["bin/"+n for n in (["Qt6Qml.dll","Qt6Quick.dll","Qt6Network.dll","Qt6Svg.dll","puttygen.exe","openssh/ssh.exe","openssh/sftp.exe","openssh/ssh-keygen.exe"] if app=="8bitShell" else ["Qt6Widgets.dll","Qt6Network.dll","Qt6Svg.dll","Qt6Core5Compat.dll"])]
+    files=["bin/Apply-Update.ps1","bin/Qt6Core.dll","bin/msvcp140.dll","bin/vcruntime140.dll","bin/qt.conf","plugins/platforms/qwindows.dll","Start-Portable.cmd","profile/settings.ini"]
+    files+=["bin/"+n for n in (["Qt6Qml.dll","Qt6Quick.dll","Qt6Network.dll","Qt6Svg.dll","puttygen.exe","openssh/ssh.exe","openssh/sftp.exe","openssh/ssh-keygen.exe"] if app=="8bitShell" else ["8p.exe","8bitPadFileIcons.dll","Qt6Widgets.dll","Qt6Network.dll","Qt6Svg.dll","Qt6Core5Compat.dll"])]
     for name in files:
      p=stage/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b"fixture")
     command=["powershell.exe","-NoProfile","-ExecutionPolicy","Bypass","-File",str(ROOT/"scripts/ci/package-windows.ps1"),"-Stage",str(stage),"-OutputDirectory",str(out),"-Architecture",cpu,"-GenerateOnly"]
@@ -96,6 +96,9 @@ class ReleaseContractTests(unittest.TestCase):
     product=ET.parse(result.stdout.strip().splitlines()[-1]).getroot().find("w:Product",ns)
     self.assertEqual(product.get("Manufacturer"),"8bitPrograms")
     self.assertEqual(product.find("w:Package",ns).get("InstallScope"),"perUser")
+    path_entry=product.find(".//w:Environment",ns)
+    self.assertIsNotNone(path_entry)
+    self.assertEqual(path_entry.attrib,dict(Id="UserCommandPathValue",Name="PATH",Action="set",Part="last",System="no",Permanent="no",Value="[INSTALLDIR]bin"))
     menu=product.find('.//w:Directory[@Id="ProgramMenuFolder"]/w:Directory[@Id="MenuDir"]',ns)
     self.assertEqual(menu.get("Name"),"8bitPrograms")
     shortcuts=product.findall(".//w:Shortcut",ns);self.assertEqual(len(shortcuts),2)
@@ -111,6 +114,20 @@ class ReleaseContractTests(unittest.TestCase):
     self.assertFalse(any(x.get("Directory") in ("Programs","ProgramMenuFolder","LocalAppDataFolder") for x in cleanup))
     self.assertFalse(product.findall(".//w:RemoveFile",ns))
     payload=[x.get("Source") for x in product.findall(".//w:File",ns)]
+    icon_server=product.find('.//w:Component[@Id="PadFileIconHandler"]',ns)
+    if app=="8bitPad":
+     self.assertTrue(any(Path(x).name=="8bitPadFileIcons.dll" for x in payload))
+     self.assertIsNotNone(icon_server)
+     self.assertEqual(icon_server.get("Win64"),"no" if cpu=="x86" else "yes")
+     registry=icon_server.findall("w:RegistryValue",ns)
+     self.assertEqual(len(registry),3)
+     self.assertTrue(all(x.get("Root")=="HKCU" for x in registry))
+     self.assertTrue(all(x.get("Key").startswith("Software\\Classes\\CLSID\\{D325870F-4B1C-4D26-A03C-3575B1607635}") for x in registry))
+     server=next(x for x in registry if x.get("KeyPath")=="yes")
+     self.assertEqual(server.get("Value"),"[INSTALLDIR]bin\\8bitPadFileIcons.dll")
+     self.assertEqual(next(x for x in registry if x.get("Name")=="ThreadingModel").get("Value"),"Apartment")
+    else:
+     self.assertIsNone(icon_server)
     self.assertFalse(any("profile" in Path(x).parts or Path(x).name=="Start-Portable.cmd" for x in payload))
 
 if __name__=="__main__":unittest.main()

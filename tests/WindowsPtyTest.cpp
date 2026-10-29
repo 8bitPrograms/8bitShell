@@ -2,6 +2,7 @@
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QKeyEvent>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QDir>
@@ -102,6 +103,46 @@ private slots:
         p.resize(132, 40);
         QTRY_COMPARE_WITH_TIMEOUT(exit.size(), 1, 10000);
         QVERIFY2(output.contains("SIZE=132x40"), output.constData());
+    }
+    void controlCLeavesPowerShellUsable_data() {
+        QTest::addColumn<QString>("mode");
+        QTest::addColumn<bool>("controlCCopy");
+        QTest::newRow("raw-vt") << QStringLiteral("interrupt-raw") << false;
+        QTest::newRow("cooked-interrupt") << QStringLiteral("interrupt-cooked") << false;
+        QTest::newRow("win32-events") << QStringLiteral("interrupt-win32") << false;
+        QTest::newRow("ctrl-c-copy-without-selection") << QStringLiteral("interrupt-raw") << true;
+    }
+    void controlCLeavesPowerShellUsable() {
+        QFETCH(QString, mode);
+        QFETCH(bool, controlCCopy);
+        TerminalView terminal;
+        if (controlCCopy) terminal.setKeyBindings({{QStringLiteral("copy"), QStringLiteral("Ctrl+C")}});
+        terminal.setWidth(1000); terminal.setHeight(500); terminal.setLogEnabled(false);
+        QByteArray output;
+        connect(&terminal, &TerminalView::rawOutputReceived, this, [&](const QByteArray& bytes) { output += bytes; });
+        QString program = bitshell::core::Platform::windowsSystemDirectory()
+            + QStringLiteral("/WindowsPowerShell/v1.0/powershell.exe");
+        QString executable = fixture(); executable.replace(QLatin1Char('\''), QStringLiteral("''"));
+        const QString script = QStringLiteral("Import-Module PSReadLine -ErrorAction SilentlyContinue; "
+            "Set-PSReadLineOption -HistorySaveStyle SaveNothing; function prompt { 'PS_TEST_READY> ' }; & '%1' %2").arg(executable, mode);
+        QVERIFY(terminal.startLocalCommand({program, QStringLiteral("-NoLogo"), QStringLiteral("-NoProfile"),
+            QStringLiteral("-NoExit"), QStringLiteral("-Command"), script}));
+        QTRY_VERIFY2_WITH_TIMEOUT(output.contains("INTERRUPT_READY"), output.constData(), 15000);
+        QKeyEvent cancel(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier, QString(QChar(3)));
+        QCoreApplication::sendEvent(&terminal, &cancel);
+        QKeyEvent release(QEvent::KeyRelease, Qt::Key_C, Qt::ControlModifier, QString(QChar(3)));
+        QCoreApplication::sendEvent(&terminal, &release);
+        QKeyEvent controlReleased(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
+        QCoreApplication::sendEvent(&terminal, &controlReleased);
+        QTRY_VERIFY2_WITH_TIMEOUT(output.contains("PS_TEST_READY>"), output.right(1200).constData(), 15000);
+        QKeyEvent text(QEvent::KeyPress, Qt::Key_unknown, Qt::NoModifier,
+            QStringLiteral("Write-Output ('CTRL_'+'C_RECOVERED')"));
+        QCoreApplication::sendEvent(&terminal, &text);
+        QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier, QStringLiteral("\r"));
+        QCoreApplication::sendEvent(&terminal, &enter);
+        QTRY_VERIFY2_WITH_TIMEOUT(output.contains("CTRL_C_RECOVERED"), output.right(1600).constData(), 15000);
+        QVERIFY(terminal.isRunning());
+        TerminalTestAccess::stopFixture(terminal);
     }
     void noHandleInheritance() {
         SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};

@@ -23,9 +23,11 @@ QVariantMap AppSettings::defaultValues() {
         {QStringLiteral("terminal/backspaceMode"), QStringLiteral("del")},
         {QStringLiteral("terminal/copyOnSelect"), false},
         {QStringLiteral("appearance/uiTheme"), QStringLiteral("catppuccin-mocha")},
+        {QStringLiteral("appearance/bonusThemesUnlocked"), false},
         {QStringLiteral("appearance/terminalTheme"), QStringLiteral("xterm")},
         {QStringLiteral("appearance/uiLightTheme"), QStringLiteral("catppuccin-latte")},
         {QStringLiteral("appearance/terminalLightTheme"), QStringLiteral("xterm")},
+        {QStringLiteral("appearance/separateTerminalTheme"), false},
         {QStringLiteral("appearance/mode"), QStringLiteral("dark")},
         {QStringLiteral("appearance/dayStart"), QStringLiteral("07:00")},
         {QStringLiteral("appearance/nightStart"), QStringLiteral("19:00")},
@@ -66,6 +68,7 @@ AppSettings::AppSettings(QObject* parent)
 }
 
 void AppSettings::applyValues() {
+    emit bonusThemesChanged();
     m_terminalFontFamily = m_settings.value(QStringLiteral("terminal/fontFamily")).toString();
     m_terminalFontSize = m_settings.value(QStringLiteral("terminal/fontSize")).toDouble();
     m_terminalTextAntialiasing = m_settings.value(QStringLiteral("terminal/textAntialiasing")).toString();
@@ -77,6 +80,7 @@ void AppSettings::applyValues() {
     m_terminalThemeId = m_settings.value(QStringLiteral("appearance/terminalTheme")).toString();
     m_uiLightThemeId = m_settings.value(QStringLiteral("appearance/uiLightTheme")).toString();
     m_terminalLightThemeId = m_settings.value(QStringLiteral("appearance/terminalLightTheme")).toString();
+    m_separateTerminalTheme = m_settings.value(QStringLiteral("appearance/separateTerminalTheme")).toBool();
     m_appearanceMode = m_settings.value(QStringLiteral("appearance/mode")).toString();
     m_dayStart = m_settings.value(QStringLiteral("appearance/dayStart")).toString();
     m_nightStart = m_settings.value(QStringLiteral("appearance/nightStart")).toString();
@@ -119,6 +123,21 @@ void AppSettings::applyValues() {
     emit logRotationMegabytesChanged();
     emit logRetainedFilesChanged();
     emit expandedSessionFoldersChanged();
+}
+
+QString AppSettings::applicationVersion() const { return QCoreApplication::applicationVersion(); }
+bool AppSettings::bonusThemesUnlocked() const {
+    return m_settings.value(QStringLiteral("appearance/bonusThemesUnlocked")).toBool();
+}
+bool AppSettings::registerVersionTap() {
+    if (bonusThemesUnlocked()) return false;
+    if (!m_versionTapTimer.isValid() || m_versionTapTimer.elapsed() > 1500) m_versionTapCount = 0;
+    m_versionTapTimer.start();
+    if (++m_versionTapCount < 7) return false;
+    m_versionTapCount = 0;
+    if (!storeValue(QStringLiteral("appearance/bonusThemesUnlocked"), true)) return false;
+    emit bonusThemesChanged();
+    return true;
 }
 
 bool AppSettings::storeValue(const QString& key, const QVariant& value) {
@@ -254,6 +273,7 @@ void AppSettings::setTerminalThemeId(const QString& value) {
 
 QString AppSettings::uiLightThemeId() const { return m_uiLightThemeId; }
 QString AppSettings::terminalLightThemeId() const { return m_terminalLightThemeId; }
+bool AppSettings::separateTerminalTheme() const { return m_separateTerminalTheme; }
 QString AppSettings::appearanceMode() const { return m_appearanceMode; }
 QString AppSettings::dayStart() const { return m_dayStart; }
 QString AppSettings::nightStart() const { return m_nightStart; }
@@ -263,7 +283,17 @@ QString AppSettings::effectiveUiThemeId() const {
     return m_darkAppearance ? m_uiThemeId : m_uiLightThemeId;
 }
 QString AppSettings::effectiveTerminalThemeId() const {
+    // Keep independent terminal choices stored so switching back to separate
+    // themes restores them. Linked mode follows the active UI slot directly.
+    if (!m_separateTerminalTheme) return effectiveUiThemeId();
     return m_darkAppearance ? m_terminalThemeId : m_terminalLightThemeId;
+}
+
+void AppSettings::setSeparateTerminalTheme(bool value) {
+    if (value == m_separateTerminalTheme) return;
+    if (!storeValue(QStringLiteral("appearance/separateTerminalTheme"), value)) return;
+    m_separateTerminalTheme = value;
+    emit appearanceChanged();
 }
 
 void AppSettings::setUiLightThemeId(const QString& value) {
@@ -508,6 +538,7 @@ QVariantMap AppSettings::defaultKeyBindings() {
         {QStringLiteral("closeTab"), QStringLiteral("Ctrl+Shift+W")},
         {QStringLiteral("nextTab"), QStringLiteral("Ctrl+Tab")},
         {QStringLiteral("quickConnect"), QStringLiteral("Ctrl+K")},
+        {QStringLiteral("commandPalette"), QStringLiteral("Ctrl+Shift+P")},
         {QStringLiteral("zoomIn"), QStringLiteral("Ctrl++")},
         {QStringLiteral("zoomOut"), QStringLiteral("Ctrl+-")}
     };

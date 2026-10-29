@@ -1,9 +1,13 @@
 #include <bitshell/terminal/TerminalView.h>
+#include <bitshell/terminal/LocalSshCommand.h>
 #include <bitshell/core/LocalProfileStore.h>
 #include <bitshell/core/SshSecurity.h>
 #include <bitshell/core/BoundedRegex.h>
 #include <bitshell/core/AppSettings.h>
 #include <bitshell/core/Platform.h>
+#include <bitshell/core/NativeSshCommand.h>
+#include <bitshell/core/PasswordStore.h>
+#include <bitshell/core/PasswordBroker.h>
 
 #include <QClipboard>
 #include <QDir>
@@ -22,6 +26,8 @@
 #include <QQuickWindow>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QTimer>
+#include <QUuid>
 #include <QWheelEvent>
 
 #include <algorithm>
@@ -124,7 +130,17 @@ TerminalView::TerminalView(QQuickItem* parent)
     recalculateMetrics();
 
     connect(&m_process, &PtyProcess::dataReceived, this, &TerminalView::handleProcessData);
-    connect(&m_process, &PtyProcess::runningChanged, this, [this](bool) {
+    connect(&m_process, &PtyProcess::runningChanged, this, [this](bool running) {
+        if (!running) {
+            // Explicit stop/restart does not emit finished on every PTY
+            // backend. A stopped process must never retain a searchable host
+            // or a dispatch waiting for a prompt that can no longer arrive.
+            stopPasswordBroker();
+            setCurrentSshConnection({});
+            cancelPendingLocalSsh();
+            m_localPromptActive = false;
+            clearLocalSshQuery();
+        }
         emit runningChanged();
     });
     connect(&m_process, &PtyProcess::finished, this, &TerminalView::handleProcessFinished);
@@ -248,6 +264,9 @@ TerminalView::~TerminalView() {
     // QQuickItem's base destructor emits focus/window signals after our members
     // have been destroyed. Stop these callbacks while the derived object exists.
     disconnect(this, nullptr, this, nullptr);
+    disconnect(&m_process, nullptr, this, nullptr);
+    stopPasswordBroker();
+    m_pendingPasswordBroker.reset();
     for (const auto& connection : m_windowConnections) disconnect(connection);
     m_windowConnections.clear();
     m_process.stop();
@@ -810,12 +829,74 @@ void TerminalView::confirmX11(bool accepted) {
 void TerminalView::launchSshProfile(const QVariantMap& profile) {
     const auto command = core::SshSecurity::command(profile, core::SshSecurity::Transport::Terminal);
     if (!command) { setStatusText(command.error()); return; }
+    QProcessEnvironment environment;
+    std::unique_ptr<core::PasswordBroker> broker;
+    if (!core::PasswordStore::binding(profile).isEmpty()) {
+        auto password = core::PasswordStore::read(profile);
+        if (!password) { setStatusText(password.error()); return; }
+        if (!password->isEmpty()) {
+            broker = std::make_unique<core::PasswordBroker>();
+            const auto additions = broker->start(profile, *password);
+            password->fill('\0'); password->clear();
+            if (!additions) { setStatusText(additions.error()); return; }
+            environment = *additions;
+        }
+    }
     const QString name = profile.value(QStringLiteral("name")).toString().trimmed();
     const QString label = name.isEmpty() ? command->target : name;
     if (launchProcess(command->program,
                   command->arguments,
                   label,
-                  QStringLiteral("Connecting to %1…").arg(command->target), true)) m_lastSshProfile = profile;
+                  QStringLiteral("Connecting to %1…").arg(command->target), true, false, {}, environment)) {
+        m_passwordBroker = std::move(broker);
+        m_lastSshProfile = profile;
+        setCurrentSshConnection(sshConnectionSummary(profile, QStringLiteral("managed")));
+    }
+}
+
+void TerminalView::stopPasswordBroker() {
+    if (m_passwordBroker) m_passwordBroker->stop();
+    m_passwordBroker.reset();
+}
+
+QVariantMap TerminalView::sshConnectionSummary(const QVariantMap& profile, const QString& mode) {
+    const auto host = profile.value(QStringLiteral("host")).toString();
+    if (host.isEmpty()) return {};
+    // Only display/search metadata crosses this boundary. No keys, paths,
+    // passwords, generated shell command or gateway login string is exposed.
+    const auto plan = profile.value(QStringLiteral("psmp")).toMap();
+    const auto route = plan.value(QStringLiteral("route")).toMap();
+    const bool routed = !plan.isEmpty();
+    QString account = profile.value(QStringLiteral("user")).toString();
+    if (routed) {
+        const auto rule = plan.value(QStringLiteral("account")).toMap();
+        account = rule.value(QStringLiteral("source")) == QStringLiteral("identity")
+            ? plan.value(QStringLiteral("operator")).toString() + rule.value(QStringLiteral("suffix")).toString()
+            : rule.value(QStringLiteral("name")).toString();
+        const auto domain = rule.value(QStringLiteral("domain")).toString();
+        if (!domain.isEmpty()) account += u'@' + domain;
+    }
+    const int port = profile.value(QStringLiteral("port"), 22).toInt();
+    return {{QStringLiteral("host"), host}, {QStringLiteral("user"), account},
+        {QStringLiteral("port"), port > 0 ? port : 22},
+        {QStringLiteral("name"), profile.value(QStringLiteral("name")).toString()},
+        {QStringLiteral("catalogId"), profile.value(QStringLiteral("id")).toString()},
+        {QStringLiteral("mode"), mode},
+        {QStringLiteral("connectionMode"), routed ? QStringLiteral("cyberark") : QStringLiteral("direct")},
+        {QStringLiteral("gateway"), route.value(QStringLiteral("host")).toString()},
+        {QStringLiteral("routeId"), plan.value(QStringLiteral("routeId")).toString()}};
+}
+
+void TerminalView::setCurrentSshConnection(const QVariantMap& connection) {
+    if (m_currentSshConnection == connection) return;
+    m_currentSshConnection = connection;
+    // OSC callbacks run under the terminal mutex. Publish after that batch so
+    // palette listeners can safely inspect the terminal or change focus.
+    if (m_processingOutput) m_currentSshConnectionNotificationPending = true;
+    else {
+        m_currentSshConnectionNotificationPending = false;
+        emit currentSshConnectionChanged();
+    }
 }
 
 bool TerminalView::setBroadcastArmed(bool enabled) {
@@ -837,8 +918,231 @@ QString TerminalView::broadcastError(const QString& command, quint64 generation)
 }
 
 void TerminalView::sendText(const QString& text) {
-    if (isRunning() && !text.isEmpty()) {
+    if (isRunning() && !text.isEmpty() && m_pendingLocalSshCommand.isEmpty()) {
+        ++m_localSshRefreshSerial;
+        clearLocalSshQuery();
+        if (text.contains(u'\r') || text.contains(u'\n') || text.contains(QChar(3))) m_localPromptActive = false;
         m_process.write(text.toUtf8());
+    }
+}
+
+void TerminalView::clearLocalSshQuery() {
+    if (m_localSshQuery.isEmpty()) return;
+    m_localSshQuery.clear();
+    emit localSshQueryChanged();
+}
+
+void TerminalView::dismissLocalSsh() {
+    m_dismissedLocalSshCommand = m_localSshQuery.value(QStringLiteral("command")).toString();
+    clearLocalSshQuery();
+    emit localSshDismiss();
+}
+
+QString TerminalView::localInputTextLocked() const {
+    if (!m_localPromptActive || m_alternateScreen || m_mouseMode != VTERM_PROP_MOUSE_NONE
+        || m_managedSsh || !m_lastInteractiveShell || m_scrollOffset != 0
+        || !m_pendingPaste.isEmpty() || !m_pendingX11Profile.isEmpty()
+        || m_integratedShellKind.isEmpty() || m_localInputColumn < 0) return {};
+    VTermPos cursor{};
+    vterm_state_get_cursorpos(vterm_obtain_state(m_terminal), &cursor);
+    const auto row = m_historyDropped + quint64(m_scrollback.size()) + quint64(cursor.row);
+    // A partial/wrapped line or an editing cursor before the end is ambiguous.
+    // Keep the normal shell behavior in those cases, including predictive tails.
+    if (row != m_localInputRow || cursor.col < m_localInputColumn) return {};
+    const auto cells = lineAt(int(m_scrollback.size()) + cursor.row);
+    QString command = QStringLiteral("");
+    for (int column = m_localInputColumn; column < m_columns; ++column) {
+        const auto& cell = cells[size_t(column)];
+        if (cell.width == 0) continue;
+        const auto glyph = textForCell(cell);
+        if (column >= cursor.col) {
+            if (!glyph.trimmed().isEmpty()) return {};
+        } else command += glyph.isEmpty() ? QStringLiteral(" ") : glyph;
+    }
+    return command;
+}
+
+void TerminalView::refreshLocalSshQuery() {
+    QVariantMap query;
+    if (isRunning() && m_pendingLocalSshCommand.isEmpty()) {
+        QMutexLocker locker(&m_terminalMutex);
+        const auto command = localInputTextLocked();
+        if (command != m_lastLocalInput) {
+            m_dismissedLocalSshCommand.clear();
+            m_lastLocalInput = command;
+        }
+        if (!command.isNull() && command != m_dismissedLocalSshCommand) {
+            query = LocalSshCommand::parse(command);
+            if (!query.isEmpty()) {
+                query.insert(QStringLiteral("shellKind"), m_integratedShellKind);
+                query.insert(QStringLiteral("generation"), QVariant::fromValue(m_localPromptGeneration));
+            }
+        }
+    }
+    if (query != m_localSshQuery) {
+        m_localSshQuery = query;
+        emit localSshQueryChanged();
+    }
+}
+
+void TerminalView::sendLocalControlC() {
+    if (m_win32Input.enabled()) {
+        QKeyEvent press(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier, QString(QChar(3)));
+        QKeyEvent release(QEvent::KeyRelease, Qt::Key_C, Qt::ControlModifier, QString(QChar(3)));
+        QKeyEvent modifierRelease(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
+        m_process.write(Win32Input::encode(press, true) + Win32Input::encode(release, false)
+                        + Win32Input::encode(modifierRelease, false));
+    } else sendCodepoint('c', VTERM_MOD_CTRL);
+}
+
+bool TerminalView::runLocalSsh(const QVariantMap& profile, const QVariantMap& expectedQuery) {
+    // An input API may have invalidated the last visible suggestion before the
+    // shell echoes that input. Never recreate and accept the older screen line.
+    if (expectedQuery.isEmpty() || expectedQuery != m_localSshQuery) {
+        emit localSshError(QStringLiteral("The local command changed. Select the SSH account again."));
+        return false;
+    }
+    refreshLocalSshQuery();
+    if (expectedQuery.isEmpty() || expectedQuery != m_localSshQuery || !isRunning()
+        || !m_pendingLocalSshCommand.isEmpty()) {
+        emit localSshError(QStringLiteral("The local command changed. Select the SSH account again."));
+        return false;
+    }
+    QProcessEnvironment environment;
+    std::unique_ptr<core::PasswordBroker> broker;
+    const bool passwordMode = profile.value(QStringLiteral("authenticationMode")) == QStringLiteral("password");
+    const bool wsl = m_integratedShellKind == QStringLiteral("wsl-bash");
+    if (passwordMode && !wsl && !core::PasswordStore::binding(profile).isEmpty()) {
+        auto password = core::PasswordStore::read(profile);
+        if (!password) { emit localSshError(password.error()); return false; }
+        if (!password->isEmpty()) {
+            broker = std::make_unique<core::PasswordBroker>();
+            const auto additions = broker->start(profile, *password);
+            password->fill('\0'); password->clear();
+            if (!additions) { emit localSshError(additions.error()); return false; }
+            environment = *additions;
+        }
+    }
+    const auto command = core::NativeSshCommand::command(profile, m_integratedShellKind, environment);
+    if (!command) { emit localSshError(command.error()); return false; }
+    // The builder's output is one native-shell command, never terminal controls.
+    if (command->isEmpty() || command->size() > 32768
+        || std::any_of(command->cbegin(), command->cend(), [](QChar c) { return c.unicode() < 32 || c.unicode() == 127; })) {
+        emit localSshError(QStringLiteral("The SSH command could not be represented safely in this shell."));
+        return false;
+    }
+    m_pendingLocalSshCommand = *command;
+    m_pendingPasswordBroker = std::move(broker);
+    m_pendingLocalSshStatus = passwordMode && wsl
+        ? QStringLiteral("WSL SSH: enter the password in this terminal; saved Windows passwords are not forwarded to WSL.") : QString{};
+    m_pendingLocalSshConnection = sshConnectionSummary(profile, QStringLiteral("local"));
+    m_pendingLocalSshShellKind = m_integratedShellKind;
+    m_pendingLocalSshGeneration = m_localPromptGeneration;
+    const auto request = ++m_localSshRequestSerial;
+    m_localPromptActive = false;
+    clearLocalSshQuery();
+    sendLocalControlC();
+    QTimer::singleShot(5000, this, [this, request] {
+        if (request != m_localSshRequestSerial || m_pendingLocalSshCommand.isEmpty()) return;
+        cancelPendingLocalSsh();
+        emit localSshError(QStringLiteral("The local shell did not return to an empty prompt. Nothing was connected; enter the SSH command again."));
+    });
+    return true;
+}
+
+void TerminalView::cancelPendingLocalSsh() {
+    ++m_localSshRequestSerial;
+    m_pendingPasswordBroker.reset();
+    m_pendingLocalSshCommand.clear();
+    m_pendingLocalSshStatus.clear();
+    m_pendingLocalSshConnection.clear();
+    m_pendingLocalSshShellKind.clear();
+}
+
+void TerminalView::completePendingLocalSsh() {
+    if (m_pendingLocalSshCommand.isEmpty() || !m_localPromptActive
+        || m_localPromptGeneration <= m_pendingLocalSshGeneration) return;
+    bool emptyPrompt = false;
+    {
+        QMutexLocker locker(&m_terminalMutex);
+        const auto input = localInputTextLocked();
+        emptyPrompt = !input.isNull() && input.isEmpty();
+    }
+    if (!emptyPrompt || m_integratedShellKind != m_pendingLocalSshShellKind) {
+        cancelPendingLocalSsh();
+        emit localSshError(QStringLiteral("The local shell prompt changed. Nothing was connected."));
+        return;
+    }
+    QByteArray input;
+    if (m_win32Input.enabled()) {
+        // ConPTY coalesces adjacent identical key-down records. A complete
+        // down/up pair per character preserves literal runs such as ssh, 2222
+        // and quoted paths; these are synthetic keystrokes, not held keys.
+        for (QChar character : m_pendingLocalSshCommand) {
+            const QString text(character);
+            QKeyEvent press(QEvent::KeyPress, Qt::Key_unknown, Qt::NoModifier, text);
+            QKeyEvent release(QEvent::KeyRelease, Qt::Key_unknown, Qt::NoModifier, text);
+            input += Win32Input::encode(press, true) + Win32Input::encode(release, false);
+        }
+        QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier, QStringLiteral("\r"));
+        QKeyEvent release(QEvent::KeyRelease, Qt::Key_Return, Qt::NoModifier, QStringLiteral("\r"));
+        input += Win32Input::encode(enter, true) + Win32Input::encode(release, false);
+    } else input = m_pendingLocalSshCommand.toUtf8() + '\r';
+    const auto connection = m_pendingLocalSshConnection;
+    const auto status = m_pendingLocalSshStatus;
+    auto broker = std::move(m_pendingPasswordBroker);
+    cancelPendingLocalSsh();
+    m_localPromptActive = false;
+    clearLocalSshQuery();
+    if (!m_process.canWrite(input.size())) {
+        emit localSshError(QStringLiteral("The terminal input queue is full. Nothing was connected."));
+        return;
+    }
+    m_process.write(input);
+    stopPasswordBroker();
+    m_passwordBroker = std::move(broker);
+    if (!status.isEmpty()) setStatusText(status);
+    setCurrentSshConnection(connection);
+}
+
+int TerminalView::oscFallbackCallback(int command, VTermStringFragment fragment, void* user) {
+    if (command != 133 && command != 777) return 0;
+    static_cast<TerminalView*>(user)->processShellMarker(command, fragment);
+    return 1;
+}
+
+void TerminalView::processShellMarker(int command, VTermStringFragment fragment) {
+    if (fragment.initial) m_shellMarkerFragment.clear();
+    if (m_shellMarkerFragment.size() + qsizetype(fragment.len) > 256) {
+        m_shellMarkerFragment = QByteArray(257, '!');
+        return;
+    }
+    m_shellMarkerFragment.append(fragment.str, qsizetype(fragment.len));
+    if (!fragment.final || m_shellIntegrationToken.isEmpty() || m_managedSsh || !m_lastInteractiveShell) return;
+    const auto fields = QString::fromLatin1(m_shellMarkerFragment).split(u';');
+    if (command == 777) {
+        if (fields.size() == 3 && fields[0] == QStringLiteral("8bitshell") && fields[1] == m_shellIntegrationToken
+            && (fields[2] == QStringLiteral("powershell") || fields[2] == QStringLiteral("bash") || fields[2] == QStringLiteral("wsl-bash")))
+            m_integratedShellKind = fields[2];
+        return;
+    }
+    if (fields.size() != 2 || fields[1] != m_shellIntegrationToken || m_integratedShellKind.isEmpty()) return;
+    if (fields[0] == QStringLiteral("A") || fields[0] == QStringLiteral("C")) {
+        m_localPromptActive = false;
+        m_localInputColumn = -1;
+    } else if (fields[0] == QStringLiteral("B") && !m_alternateScreen) {
+        // Return to the authenticated local prompt expires a native child's
+        // capability even when it never requested a password.
+        stopPasswordBroker();
+        if (m_currentSshConnection.value(QStringLiteral("mode")) == QStringLiteral("local"))
+            setCurrentSshConnection({});
+        VTermPos cursor{};
+        vterm_state_get_cursorpos(vterm_obtain_state(m_terminal), &cursor);
+        m_localInputRow = m_historyDropped + quint64(m_scrollback.size()) + quint64(cursor.row);
+        m_localInputColumn = cursor.col;
+        ++m_localPromptGeneration;
+        m_dismissedLocalSshCommand.clear();
+        m_localPromptActive = true;
     }
 }
 
@@ -855,7 +1159,9 @@ void TerminalView::pasteText(const QString& text) {
     requestPaste(text, false);
 }
 void TerminalView::requestPaste(const QString& text, bool appendEnter) {
-    if (text.isEmpty() || !isRunning()) return;
+    if (text.isEmpty() || !isRunning() || !m_pendingLocalSshCommand.isEmpty()) return;
+    ++m_localSshRefreshSerial;
+    clearLocalSshQuery();
     m_pendingPaste.clear();
     if (text.size() > 256 * 1024 || text.toUtf8().size() > 1024 * 1024 - 32
         || std::any_of(text.cbegin(), text.cend(), [](QChar c) {
@@ -887,6 +1193,10 @@ void TerminalView::confirmPaste(bool accepted) {
     forceActiveFocus();
 }
 void TerminalView::writePaste(const QString& text, bool appendEnter) {
+    if (!m_pendingLocalSshCommand.isEmpty()) return;
+    ++m_localSshRefreshSerial;
+    clearLocalSshQuery();
+    if (appendEnter || text.contains(u'\r') || text.contains(u'\n')) m_localPromptActive = false;
     QMutexLocker locker(&m_terminalMutex);
     vterm_keyboard_start_paste(m_terminal);
     m_process.write(text.toUtf8());
@@ -1191,7 +1501,8 @@ void TerminalView::keyPressEvent(QKeyEvent* event) {
         return !configured.isEmpty() && QKeySequence(event->keyCombination())
                == QKeySequence::fromString(configured, QKeySequence::PortableText);
     };
-    if (matches(QStringLiteral("copy"))) {
+    const bool plainControlC = event->key() == Qt::Key_C && modifiers == Qt::ControlModifier;
+    if (matches(QStringLiteral("copy")) && (!plainControlC || hasSelection())) {
         copySelection();
         event->accept();
         return;
@@ -1226,9 +1537,56 @@ void TerminalView::keyPressEvent(QKeyEvent* event) {
         return;
     }
 
+    if (!m_pendingLocalSshCommand.isEmpty()) {
+        if (event->key() == Qt::Key_Escape || plainControlC) cancelPendingLocalSsh();
+        m_consumedLocalSshKeys.insert(event->key());
+        event->accept();
+        return;
+    }
+    if (m_localSshSuggestionsActive && !m_localSshQuery.isEmpty()) {
+        const bool plain = modifiers == Qt::NoModifier;
+        const bool backwardsTab = event->key() == Qt::Key_Backtab
+            || (event->key() == Qt::Key_Tab && modifiers == Qt::ShiftModifier);
+        bool handled = true;
+        if ((plain && event->key() == Qt::Key_Up) || backwardsTab) emit localSshNavigate(-1);
+        else if (plain && (event->key() == Qt::Key_Down || event->key() == Qt::Key_Tab)) emit localSshNavigate(1);
+        else if (plain && (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+                 && m_localSshSelectionReady) emit localSshAccept();
+        else if (plain && event->key() == Qt::Key_Escape) dismissLocalSsh();
+        else handled = false;
+        if (handled) {
+            m_consumedLocalSshKeys.insert(event->key());
+            event->accept();
+            return;
+        }
+    }
+    // Suggestions describe rendered, settled input. Invalidate immediately on
+    // typing so a fast Enter never selects a host from an older visible line.
+    if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+        && modifiers == Qt::NoModifier && !m_localSshQuery.isEmpty()) {
+        QVariantMap requested;
+        {
+            QMutexLocker locker(&m_terminalMutex);
+            const auto input = localInputTextLocked();
+            if (!input.isNull() && input == m_localSshQuery.value(QStringLiteral("command")).toString())
+                requested = LocalSshCommand::parse(input);
+        }
+        if (!requested.isEmpty())
+            setCurrentSshConnection(sshConnectionSummary(requested, QStringLiteral("local")));
+    }
+    ++m_localSshRefreshSerial;
+    clearLocalSshQuery();
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter || plainControlC)
+        m_localPromptActive = false;
+
     setScrollOffset(0);
     noteCursorActivity();
     const VTermModifier terminalModifiers = modifiersFor(modifiers);
+    if (m_win32Input.enabled()) {
+        m_process.write(Win32Input::encode(*event, true));
+        event->accept();
+        return;
+    }
     VTermKey key = VTERM_KEY_NONE;
     switch (event->key()) {
     case Qt::Key_Return:
@@ -1456,6 +1814,8 @@ void TerminalView::initializeTerminal() {
     m_screenCallbacks.sb_popline = &TerminalView::scrollbackPopCallback;
     m_screenCallbacks.sb_clear = &TerminalView::scrollbackClearCallback;
     vterm_screen_set_callbacks(m_screen, &m_screenCallbacks, this);
+    m_stateFallbacks.osc = &TerminalView::oscFallbackCallback;
+    vterm_screen_set_unrecognised_fallbacks(m_screen, &m_stateFallbacks, this);
     vterm_screen_enable_altscreen(m_screen, 1);
     vterm_screen_enable_reflow(m_screen, true);
     vterm_screen_set_damage_merge(m_screen, VTERM_DAMAGE_SCROLL);
@@ -1475,7 +1835,20 @@ void TerminalView::initializeTerminal() {
 }
 
 void TerminalView::resetTerminal() {
+    stopPasswordBroker();
+    setCurrentSshConnection({});
     QMutexLocker locker(&m_terminalMutex);
+    cancelPendingLocalSsh();
+    clearLocalSshQuery();
+    m_localPromptActive = false;
+    m_alternateScreen = false;
+    m_localInputColumn = -1;
+    m_integratedShellKind.clear();
+    m_shellMarkerFragment.clear();
+    m_consumedLocalSshKeys.clear();
+    m_dismissedLocalSshCommand.clear();
+    m_lastLocalInput.clear();
+    ++m_localSshRefreshSerial;
     m_performanceFixtureComplete = false;
     m_performanceTail.clear();
     m_scrollback.clear();
@@ -1522,6 +1895,17 @@ void TerminalView::recalculateGrid() {
     if (columns == m_columns && rows == m_rows) {
         return;
     }
+    // An empty authenticated prompt can be relocated after reflow. Any typed
+    // or ambiguous input must wait for the next prompt instead of guessing its
+    // new boundary. This keeps maximize-before-typing working normally.
+    bool retainEmptyPrompt = false;
+    {
+        QMutexLocker locker(&m_terminalMutex);
+        const auto input = localInputTextLocked();
+        retainEmptyPrompt = !input.isNull() && input.isEmpty() && m_pendingLocalSshCommand.isEmpty();
+    }
+    m_localPromptActive = false;
+    clearLocalSshQuery();
 
     const int oldHistorySize = scrollbackLines(), oldScrollOffset = m_scrollOffset;
     {
@@ -1530,6 +1914,14 @@ void TerminalView::recalculateGrid() {
         m_rows = rows;
         vterm_set_size(m_terminal, m_rows, m_columns);
         vterm_screen_flush_damage(m_screen);
+        if (retainEmptyPrompt && !m_alternateScreen) {
+            VTermPos cursor{};
+            vterm_state_get_cursorpos(vterm_obtain_state(m_terminal), &cursor);
+            m_localInputRow = m_historyDropped + quint64(m_scrollback.size()) + quint64(cursor.row);
+            m_localInputColumn = cursor.col;
+            ++m_localPromptGeneration;
+            m_localPromptActive = true;
+        }
         rebuildSearchMatchesLocked();
     }
     if (oldHistorySize != scrollbackLines()) emit scrollbackChanged();
@@ -1541,6 +1933,7 @@ void TerminalView::recalculateGrid() {
 }
 
 void TerminalView::handleProcessData(const QByteArray& data) {
+    m_win32Input.feed(QByteArrayView(data));
     if (m_performanceProbe && !m_performanceFixtureComplete) {
         const QByteArray marker = QByteArrayLiteral("FLOOD_END");
         m_performanceFixtureComplete = data.contains(marker)
@@ -1570,6 +1963,16 @@ void TerminalView::handleProcessData(const QByteArray& data) {
             rebuildSearchMatchesLocked(true);
         }
     }
+    if (m_currentSshConnectionNotificationPending) {
+        m_currentSshConnectionNotificationPending = false;
+        emit currentSshConnectionChanged();
+    }
+    completePendingLocalSsh();
+    if (!m_localPromptActive || m_alternateScreen) clearLocalSshQuery();
+    const auto refresh = ++m_localSshRefreshSerial;
+    QTimer::singleShot(45, this, [this, refresh] {
+        if (refresh == m_localSshRefreshSerial) refreshLocalSshQuery();
+    });
     if (oldHistorySize != scrollbackLines()) emit scrollbackChanged();
     if (oldScrollOffset != m_scrollOffset) {
         emit scrollOffsetChanged();
@@ -1590,6 +1993,11 @@ void TerminalView::handleProcessData(const QByteArray& data) {
 }
 
 void TerminalView::handleProcessFinished(int exitCode) {
+    stopPasswordBroker();
+    setCurrentSshConnection({});
+    cancelPendingLocalSsh();
+    m_localPromptActive = false;
+    clearLocalSshQuery();
     m_broadcastArmed = false; ++m_broadcastGeneration; emit broadcastStateChanged();
     stopLog();
     setStatusText(exitCode >= 0 ? QStringLiteral("Session ended (exit %1) — press Enter to restart")
@@ -1687,6 +2095,8 @@ void TerminalView::setScrollOffset(int offset) {
         return;
     }
     m_scrollOffset = bounded;
+    if (m_scrollOffset != 0) clearLocalSshQuery();
+    else refreshLocalSshQuery();
     noteCursorGeometry();
     emit scrollOffsetChanged();
     update();
@@ -1696,17 +2106,23 @@ bool TerminalView::launchProcess(const QString& program,
                                  const QStringList& arguments,
                                  const QString& targetLabel,
                                  const QString& startingStatus, bool managedSsh,
-                                 bool interactiveShell, const QString& workingDirectory) {
+                                 bool interactiveShell, const QString& workingDirectory,
+                                 const QProcessEnvironment& environmentOverrides) {
     m_process.stop();
+    m_win32Input.reset();
     m_managedSsh = managedSsh;
     m_broadcastArmed = false; ++m_broadcastGeneration; emit broadcastStateChanged();
     m_process.setEraseCharacter(m_backspaceMode == QStringLiteral("bs") ? '\x08' : '\x7f');
     m_process.setInteractiveShell(interactiveShell);
     stopLog();
     resetTerminal();
+    m_lastInteractiveShell = interactiveShell;
+    m_shellIntegrationToken = !managedSsh && interactiveShell
+        ? QUuid::createUuid().toString(QUuid::Id128) : QString{};
+    m_process.setShellIntegrationToken(m_shellIntegrationToken);
 
     QString error;
-    if (!m_process.start(program, arguments, m_columns, m_rows, &error, workingDirectory)) {
+    if (!m_process.start(program, arguments, m_columns, m_rows, &error, workingDirectory, environmentOverrides)) {
         setStatusText(QStringLiteral("Could not start session: %1").arg(error));
         return false;
     }
@@ -1995,6 +2411,14 @@ void TerminalView::sendMousePosition(const QPointF& position,
     vterm_mouse_move(m_terminal, row, column, modifiersFor(modifiers));
 }
 
+void TerminalView::keyReleaseEvent(QKeyEvent* event) {
+    if (m_consumedLocalSshKeys.remove(event->key())) { event->accept(); return; }
+    if (isRunning() && m_win32Input.enabled()) {
+        m_process.write(Win32Input::encode(*event, false));
+        event->accept();
+    } else event->ignore();
+}
+
 void TerminalView::outputCallback(const char* bytes, size_t length, void* user) {
     auto* terminal = static_cast<TerminalView*>(user);
     terminal->m_process.write(
@@ -2023,6 +2447,10 @@ int TerminalView::moveCursorCallback(VTermPos position, VTermPos, int visible, v
 int TerminalView::setTermPropertyCallback(VTermProp property, VTermValue* value, void* user) {
     auto* terminal = static_cast<TerminalView*>(user);
     switch (property) {
+    case VTERM_PROP_ALTSCREEN:
+        terminal->m_alternateScreen = value->boolean != 0;
+        terminal->m_localPromptActive = false;
+        break;
     case VTERM_PROP_CURSORVISIBLE:
         terminal->m_cursorVisible = value->boolean != 0;
         terminal->noteCursorGeometry();

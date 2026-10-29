@@ -10,6 +10,8 @@ target_sources(bitshell_terminal
         FILES
             include/bitshell/terminal/PtyProcess.h
             include/bitshell/terminal/TerminalView.h
+            include/bitshell/terminal/Win32Input.h
+            include/bitshell/terminal/LocalSshCommand.h
             include/bitshell/terminal/ScrollbackLine.h
             include/bitshell/terminal/BroadcastController.h
 )

@@ -7,6 +7,14 @@ QtObject {
 
     property string uiThemeId: "catppuccin-mocha"
     property string terminalThemeId: "xterm"
+    property bool bonusThemesUnlocked: false
+    function isBonusTheme(id) { return id === "blueberry" || id === "blueberry-light" || id.indexOf("cyberpunk-") === 0 }
+    function selectableUiThemes(selected) {
+        return uiThemes.filter(function(theme) { return root.bonusThemesUnlocked || !root.isBonusTheme(theme.id) })
+    }
+    function selectableTerminalThemes(selected) {
+        return terminalThemes.filter(function(theme) { return root.bonusThemesUnlocked || !root.isBonusTheme(theme.id) })
+    }
 
     // Build each palette off-tree, then publish it as one value. Changing nine
     // inherited roles separately makes Qt re-resolve every control nine times.
@@ -44,6 +52,13 @@ QtObject {
             id: id, name: name, background: background, foreground: foreground,
             cursor: cursor, selection: selection, ansi: ansi
         }
+    }
+
+    function cyberUi(palette) {
+        // Keep the shared layout; these themes have two deliberate chrome accents.
+        palette.secondaryAccent = palette.id === "cyberpunk-k" ? "#91bcff" : "#00f0ff"
+        palette.chromeSurface = Qt.tint(palette.surface, "#18" + palette.accent.slice(1))
+        return palette
     }
 
     function lightUi(id, name, canvas, surface, raised, text, muted, accent,
@@ -128,7 +143,19 @@ QtObject {
         lightUi("one-light", "One Light", "#f0f0f0", "#fafafa", "#eaeaeb",
                 "#383a42", "#696c77", "#4078f2", "#4078f2", "#986801", "#e45649", "#a626a4", "#507b24"),
         lightUi("rose-pine-dawn", "Rosé Pine Dawn", "#f2e9e1", "#faf4ed", "#fffaf3",
-                "#575279", "#797593", "#286983", "#286983", "#966400", "#b4637a", "#907aa9", "#497c7c")
+                "#575279", "#797593", "#286983", "#286983", "#966400", "#b4637a", "#907aa9", "#497c7c"),
+        cyberUi(ui("cyberpunk-silverhand", "Silverhand", "#0b0d16", "#101620", "#18212c",
+           "#232e3c", "#27313b", "#3b5361", "#243641", "#e8f0f2",
+           "#a3b8c5", "#829aa9", "#fcee0a", "#fff77d", "#39380e",
+           "#51b7e8", "#fcee0a", "#ff586b", "#d692ff", "#81e995")),
+        cyberUi(ui("cyberpunk-v", "V", "#140d13", "#1c121c", "#291925",
+           "#3a2331", "#442131", "#633548", "#3e2433", "#f4e4e8",
+           "#c5a8b5", "#b596a3", "#ff4f5e", "#ff99a5", "#491e2a",
+           "#74baff", "#fcee0a", "#ff6878", "#c0b2ff", "#8dedbd")),
+        cyberUi(ui("cyberpunk-k", "K", "#0b141b", "#101e26", "#172b35",
+           "#203c49", "#183947", "#31576a", "#203d4b", "#e2f2f5",
+           "#adc6d0", "#89a7b2", "#00f0ff", "#91ffff", "#143c46",
+           "#91bcff", "#f4e482", "#ff6176", "#b9a6ff", "#9aefcf"))
     ]
 
     readonly property var terminalThemes: [
@@ -161,24 +188,32 @@ QtObject {
         term("tango-light", "Tango Light", "#ffffff", "#2e3436", "#2e3436", "#d3d7cf", ["#2e3436", "#cc0000", "#4e9a06", "#c4a000", "#3465a4", "#75507b", "#06989a", "#d3d7cf", "#555753", "#ef2929", "#8ae234", "#fce94f", "#729fcf", "#ad7fa8", "#34e2e2", "#eeeeec"]),
         term("green-phosphor", "Green", "#000000", "#33ff33", "#33ff33", "#003300", ["#000000", "#cd0000", "#00cd00", "#cdcd00", "#0000ee", "#cd00cd", "#00cdcd", "#33ff33", "#007700", "#ff0000", "#00ff00", "#ffff00", "#5c5cff", "#ff00ff", "#00ffff", "#ccffcc"]),
         term("amber", "Amber", "#000000", "#ffb000", "#ffb000", "#4a3200", ["#000000", "#cd0000", "#00cd00", "#cdcd00", "#0000ee", "#cd00cd", "#00cdcd", "#ffb000", "#7f5800", "#ff0000", "#00ff00", "#ffff00", "#5c5cff", "#ff00ff", "#00ffff", "#ffe0a0"])
-    ]
+    ].concat([
+        term("cyberpunk-silverhand", "Silverhand", "#0b0d16", "#e8f0f2", "#fcee0a", "#263f50", ["#101a25", "#ff586b", "#81e995", "#fcee0a", "#51b7e8", "#d692ff", "#00f0ff", "#dce7eb", "#879aa8", "#ff8190", "#a4f3ab", "#fff77d", "#91dbff", "#ebbcff", "#8affff", "#f5fcff"]),
+        term("cyberpunk-v", "V", "#140d13", "#f4e4e8", "#ff4f5e", "#442131", ["#21121e", "#ff6878", "#8dedbd", "#fcee0a", "#74baff", "#c0b2ff", "#00f0ff", "#eee0e7", "#b294a3", "#ff99a5", "#bcffda", "#fff88a", "#a1d3ff", "#e0cfff", "#94faff", "#fff4f7"]),
+        term("cyberpunk-k", "K", "#0b141b", "#e2f2f5", "#00f0ff", "#183947", ["#14252d", "#ff6176", "#9aefcf", "#f4e482", "#91bcff", "#b9a6ff", "#00f0ff", "#d6e9ee", "#89a7b2", "#ff9aaa", "#bcffe1", "#fff7b6", "#bfdaff", "#e0cfff", "#91ffff", "#f0fcff"])
+    ])
 
-    function findTheme(id, themes) {
+    function findTheme(id, themes, fallbackId) {
         const normalized = String(id || "").toLowerCase()
         for (let index = 0; index < themes.length; ++index) {
             if (themes[index].id === normalized)
                 return themes[index]
         }
-        return themes[0]
+        for (let index = 0; index < themes.length; ++index) {
+            if (themes[index].id === fallbackId)
+                return themes[index]
+        }
+        return themes.find(function(theme) { return !root.isBonusTheme(theme.id) })
     }
 
-    function themeIndex(id, themes) {
+    function themeIndex(id, themes, missingIndex) {
         const normalized = String(id || "").toLowerCase()
         for (let index = 0; index < themes.length; ++index) {
             if (themes[index].id === normalized)
                 return index
         }
-        return 0
+        return missingIndex === undefined ? 0 : missingIndex
     }
 
     // Qt's attached ToolTip uses AutoText. Escape every untrusted value before
@@ -187,12 +222,30 @@ QtObject {
         return "<p>" + String(value).slice(0, 4096).replace(/&/g, "&amp;")
             .replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") + "</p>"
     }
-    function terminalScheme(id) { return findTheme(id, terminalThemes) }
+    function terminalScheme(id) { return findTheme(id, terminalThemes, "xterm") }
     function uiThemeIndex(id) { return themeIndex(id, uiThemes) }
     function terminalThemeIndex(id) { return themeIndex(id, terminalThemes) }
 
-    readonly property var activeUiTheme: findTheme(uiThemeId, uiThemes)
-    readonly property var activeTerminalTheme: findTheme(terminalThemeId, terminalThemes)
+    readonly property var activeUiTheme: findTheme(uiThemeId, uiThemes, "catppuccin-mocha")
+    readonly property var activeTerminalTheme: findTheme(terminalThemeId, terminalThemes, "xterm")
+
+    readonly property bool cyberpunkChrome: activeUiTheme.id.indexOf("cyberpunk-") === 0
+    readonly property color secondaryAccent: activeUiTheme.secondaryAccent || activeUiTheme.blue
+    readonly property color chromeSurface: activeUiTheme.chromeSurface || activeUiTheme.surface
+    readonly property color chromeBorder: cyberpunkChrome ? secondaryAccent : borderSoft
+    // The title/command bar is the primary color field. Its foreground and
+    // controls have separate roles so terminal and sidebar text stay light.
+    readonly property color headerSurface: cyberpunkChrome ? accent : chromeSurface
+    readonly property color headerText: cyberpunkChrome ? canvas : text
+    readonly property color headerTextMuted: cyberpunkChrome ? Qt.tint(accent, "#c0000000") : textMuted
+    readonly property color headerHover: cyberpunkChrome ? Qt.tint(accent, "#18000000") : surfaceHover
+    readonly property color headerPressed: cyberpunkChrome ? Qt.tint(accent, "#30000000") : surfaceSelected
+    readonly property color headerDivider: cyberpunkChrome ? Qt.tint(accent, "#50000000") : borderSoft
+    readonly property color headerControlBorder: cyberpunkChrome ? Qt.tint(accent, "#70000000") : border
+    readonly property color headerActiveText: cyberpunkChrome ? accent : accentBright
+    readonly property color headerFocus: cyberpunkChrome ? canvas : accent
+    readonly property color activeTabBackground: cyberpunkChrome ? accent : canvas
+    readonly property color activeTabText: cyberpunkChrome ? canvas : text
 
     readonly property color canvas: activeUiTheme.canvas
     readonly property color surface: activeUiTheme.surface

@@ -99,7 +99,8 @@ def launcher(stage):
     c=config();app=c["app"];stage=Path(stage)
     head='#!/bin/sh\nset -eu\nbase=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)\n'
     script=head+'export QT_PLUGIN_PATH="$base/plugins"\nexport QML_IMPORT_PATH="$base/qml"\nexport QML2_IMPORT_PATH="$base/qml"\nexport QT_QPA_FONTDIR="$base/fonts"\n'
-    p=stage/app;p.write_text(script+f'exec "$base/bin/{app}" "$@"\n');p.chmod(0o755)
+    for name in dict.fromkeys([app]+c.get("commandAliases",[])):
+        p=stage/name;p.write_text(script+f'exec "$base/bin/{app}" "$@"\n');p.chmod(0o755)
     p=stage/"Start-Portable.sh";p.write_text(head+f'export {c["environment"]}_PROFILE="$base/profile"\nexec "$base/{app}" "$@"\n');p.chmod(0o755)
     (stage/"bin/qt.conf").write_text("[Paths]\nPrefix=..\nLibraries=lib\nPlugins=plugins\nQmlImports=qml\nTranslations=translations\n")
 def root_owner(info):
@@ -121,7 +122,8 @@ def linux_packages(stage,out,cpu):
     work=out/("native-"+cpu);payload=work/"root";payload.mkdir(parents=True,exist_ok=False)
     shutil.copytree(stage,payload/"opt"/slug/v,symlinks=False)
     bindir=payload/"usr/bin";bindir.mkdir(parents=True)
-    wrapper=bindir/app;wrapper.write_text(f'#!/bin/sh\nexec "/opt/{slug}/{v}/{app}" "$@"\n');wrapper.chmod(0o755)
+    for name in dict.fromkeys([app]+c.get("commandAliases",[])):
+        wrapper=bindir/name;wrapper.write_text(f'#!/bin/sh\nexec "/opt/{slug}/{v}/{app}" "$@"\n');wrapper.chmod(0o755)
     apps=payload/"usr/share/applications";apps.mkdir(parents=True)
     (apps/(slug+".desktop")).write_text(f'[Desktop Entry]\nType=Application\nName={app}\nExec={app} %F\nIcon={slug}\nTerminal=false\nCategories=Development;Utility;\n')
     icons=payload/"usr/share/icons/hicolor/scalable/apps";icons.mkdir(parents=True)
@@ -159,6 +161,7 @@ cp -a "{payload}/." %{{buildroot}}/
 %defattr(-,root,root,-)
 /opt/{slug}
 /usr/bin/{app}
+{chr(10).join("/usr/bin/"+alias for alias in c.get("commandAliases",[]))}
 /usr/share/applications/{slug}.desktop
 /usr/share/icons/hicolor/scalable/apps/{slug}.svg
 ''')

@@ -23,13 +23,14 @@ Item {
     property bool broadcastIncluded: false
     signal activated()
     signal broadcastSelected(bool included)
-    readonly property bool securityPromptVisible: pasteConfirm.visible || x11Confirm.visible
+    readonly property bool securityPromptVisible: pasteConfirm.visible || x11Confirm.visible || sshSuggestions.securityPromptVisible
 
     signal zoomStepRequested(int steps)
 
     function focusTerminal() {
         if (pasteConfirm.visible) pasteConfirm.standardButton(Dialog.Cancel).forceActiveFocus()
         else if (x11Confirm.visible) x11Confirm.standardButton(Dialog.Cancel).forceActiveFocus()
+        else if (sshSuggestions.securityPromptVisible) sshSuggestions.focusPrompt()
         else terminalControl.forceActiveFocus()
     }
 
@@ -60,7 +61,7 @@ Item {
         backspaceMode: root.profile.backspaceMode === "bs"
                        || root.profile.backspaceMode === "del"
                        ? root.profile.backspaceMode : AppSettings.backspaceMode
-        colorScheme: Theme.terminalScheme(AppSettings.effectiveTerminalThemeId)
+        colorScheme: Theme.activeTerminalTheme
         logEnabled: !root.performanceProbe && AppSettings.logByDefault
         performanceProbe: root.performanceProbe
         logRootDirectory: AppSettings.logDirectory
@@ -137,6 +138,14 @@ Item {
         }
     }
 
+    LocalSshSuggestions {
+        id: sshSuggestions
+        anchors.fill: parent
+        z: 12
+        terminal: terminalControl
+        blocked: root.searchVisible || pasteConfirm.visible || x11Confirm.visible
+    }
+
     Rectangle {
         visible: root.tiled; anchors.top: parent.top; width: parent.width; height: 29
         color: root.paneActive ? Theme.surfaceSelected : Theme.surface
@@ -159,7 +168,7 @@ Item {
     }
     Rectangle {
         visible: root.tiled; anchors.fill: parent; color: "transparent"
-        border.color: root.paneActive ? Theme.accent : Theme.borderSoft; border.width: 1
+        border.color: root.paneActive ? (Theme.cyberpunkChrome ? Theme.secondaryAccent : Theme.accent) : Theme.borderSoft; border.width: 1
     }
 
     Dialog {
@@ -173,9 +182,7 @@ Item {
         modal: true
         focus: true
         standardButtons: Dialog.Ok | Dialog.Cancel
-        footer: DialogButtonBox {
-            delegate: AppButton { Keys.onReturnPressed: clicked(); Keys.onEnterPressed: clicked() }
-        }
+        footer: AppDialogButtonBox { }
         onOpened: standardButton(Dialog.Cancel).forceActiveFocus()
         onAccepted: terminalControl.confirmX11(true)
         onRejected: terminalControl.confirmX11(false)
@@ -203,9 +210,7 @@ Item {
         modal: true
         focus: true
         standardButtons: Dialog.Ok | Dialog.Cancel
-        footer: DialogButtonBox {
-            delegate: AppButton { Keys.onReturnPressed: clicked(); Keys.onEnterPressed: clicked() }
-        }
+        footer: AppDialogButtonBox { }
         onOpened: standardButton(Dialog.Cancel).forceActiveFocus()
         onAccepted: terminalControl.confirmPaste(true)
         onRejected: terminalControl.confirmPaste(false)

@@ -78,7 +78,7 @@ Dialog {
                 }
                 Text {
                     width: parent.width
-                    text: "System OpenSSH transport · strict host-key verification · no stored passwords · private local configuration"
+                    text: "System OpenSSH transport · strict host-key verification · optional device-protected passwords · private local configuration"
                     textFormat: Text.PlainText
                     color: Theme.text
                     wrapMode: Text.Wrap

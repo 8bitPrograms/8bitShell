@@ -14,6 +14,17 @@ AbstractButton {
     implicitWidth: contentRow.implicitWidth + (compact ? 18 : 24)
     opacity: enabled ? 1 : 0.42
     hoverEnabled: true
+    focusPolicy: Qt.StrongFocus
+    // AbstractButton handles Space, but unlike Button it does not provide a
+    // consistent Return/Enter activation across the platform styles.
+    Keys.onReturnPressed: function(event) {
+        if (!event.isAutoRepeat && control.enabled) control.clicked()
+        event.accepted = true
+    }
+    Keys.onEnterPressed: function(event) {
+        if (!event.isAutoRepeat && control.enabled) control.clicked()
+        event.accepted = true
+    }
 
     background: Rectangle {
         radius: Theme.radiusSmall

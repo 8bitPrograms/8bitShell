@@ -1,20 +1,74 @@
 #pragma once
 #include <bitshell/terminal/TerminalView.h>
+#include <bitshell/core/Platform.h>
 #include <QCoreApplication>
+#include <QUuid>
 
 namespace bitshell::terminal {
 class TerminalTestAccess {
 public:
+    static bool startIntegratedLocal(TerminalView& terminal, const QString& program, const QStringList& arguments) {
+        terminal.setLogEnabled(false);
+        return terminal.launchProcess(program, arguments, QStringLiteral("Local test"),
+            QStringLiteral("Starting local profile."), false, true);
+    }
+    static bool startIsolatedPowerShell(TerminalView& terminal, const QString& program, QString historyPath) {
+        terminal.setLogEnabled(false);
+        terminal.resetTerminal();
+        terminal.m_managedSsh = false;
+        terminal.m_lastInteractiveShell = true;
+        terminal.m_shellIntegrationToken = QUuid::createUuid().toString(QUuid::Id128);
+        auto arguments = core::Platform::persistentHistoryArguments(program,
+            {QStringLiteral("-NoLogo"), QStringLiteral("-NoProfile")}, terminal.m_shellIntegrationToken);
+        historyPath.replace(u'\'', QStringLiteral("''"));
+        // Configure history before the first ReadLine, so neither the startup
+        // commands nor the fake SSH invocation touch desktop-user history.
+        arguments.last() += QStringLiteral("; Set-PSReadLineOption -HistorySavePath '%1' -HistorySaveStyle SaveNothing;").arg(historyPath);
+        terminal.m_process.setInteractiveShell(false); // Arguments already have the production integration bootstrap.
+        QString error;
+        return terminal.m_process.start(program, arguments, terminal.m_columns, terminal.m_rows, &error);
+    }
+    static QString integrationToken(const TerminalView& terminal) { return terminal.m_shellIntegrationToken; }
+    static quint64 localPromptGeneration(const TerminalView& terminal) { return terminal.m_localPromptGeneration; }
+    static qint64 processId(const TerminalView& terminal) { return terminal.m_process.processId(); }
+    static bool localSshPending(const TerminalView& terminal) { return !terminal.m_pendingLocalSshCommand.isEmpty(); }
+    static void resetLocalScreen(TerminalView& terminal) { terminal.resetTerminal(); }
+    static bool localKeyConsumed(const TerminalView& terminal, int key) { return terminal.m_consumedLocalSshKeys.contains(key); }
+    static QVariantMap sshConnectionSummary(const QVariantMap& profile, const QString& mode) {
+        return TerminalView::sshConnectionSummary(profile, mode);
+    }
+    static QVariantMap localSshDiagnostics(const TerminalView& terminal) {
+        VTermPos cursor{};
+        vterm_state_get_cursorpos(vterm_obtain_state(terminal.m_terminal), &cursor);
+        return {{QStringLiteral("active"), terminal.m_localPromptActive},
+            {QStringLiteral("shell"), terminal.m_integratedShellKind},
+            {QStringLiteral("generation"), QVariant::fromValue(terminal.m_localPromptGeneration)},
+            {QStringLiteral("row"), cursor.row}, {QStringLiteral("column"), cursor.col},
+            {QStringLiteral("inputRow"), QVariant::fromValue(terminal.m_localInputRow)},
+            {QStringLiteral("inputColumn"), terminal.m_localInputColumn},
+            {QStringLiteral("input"), terminal.localInputTextLocked()},
+            {QStringLiteral("lastInput"), terminal.m_lastLocalInput},
+            {QStringLiteral("win32"), terminal.m_win32Input.enabled()}};
+    }
     static bool startBroadcastFixture(TerminalView& terminal, const QString& name) {
         terminal.setLogEnabled(false);
         terminal.m_lastSshProfile = {{QStringLiteral("host"), name + QStringLiteral(".example.test")}};
 #ifdef Q_OS_WIN
-        return terminal.launchProcess(QCoreApplication::applicationDirPath() + QStringLiteral("/windows_terminal_fixture.exe"),
+        const bool started = terminal.launchProcess(QCoreApplication::applicationDirPath() + QStringLiteral("/windows_terminal_fixture.exe"),
             {QStringLiteral("broadcast")}, name, QStringLiteral("Fixture ready"), true);
 #else
-        return terminal.launchProcess(QStringLiteral("/bin/sh"), {QStringLiteral("-c"),
+        const bool started = terminal.launchProcess(QStringLiteral("/bin/sh"), {QStringLiteral("-c"),
             QStringLiteral("stty -echo; printf 'READY\\n'; while IFS= read -r line; do printf 'ACK:%s\\n' \"$line\"; done")}, name, QStringLiteral("Fixture ready"), true);
 #endif
+        if (started) terminal.setCurrentSshConnection(TerminalView::sshConnectionSummary(
+            terminal.m_lastSshProfile, QStringLiteral("managed")));
+        return started;
+    }
+    static bool startManagedProfileFixture(TerminalView& terminal, const QVariantMap& profile) {
+        if (!startBroadcastFixture(terminal, QStringLiteral("managed-fixture"))) return false;
+        terminal.m_lastSshProfile = profile;
+        terminal.setCurrentSshConnection(TerminalView::sshConnectionSummary(profile, QStringLiteral("managed")));
+        return true;
     }
     static void stopFixture(TerminalView& terminal) { terminal.m_process.stop(); }
     static void feed(TerminalView& terminal, const QByteArray& bytes) { terminal.handleProcessData(bytes); }

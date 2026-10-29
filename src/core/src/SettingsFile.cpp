@@ -12,6 +12,27 @@
 #include <cmath>
 
 namespace bitshell::core {
+namespace {
+// An older profile may already use a newly introduced default shortcut. Keep
+// explicitly stored bindings and leave only the colliding implicit default
+// unbound. Imports and interactive edits still reject all duplicate bindings.
+void preserveExplicitShortcuts(QVariantMap& values, const QVariantMap& explicitValues) {
+    QSet<QString> occupied;
+    for (auto it = explicitValues.cbegin(); it != explicitValues.cend(); ++it) {
+        if (!it.key().startsWith(QStringLiteral("shortcuts/")) || it.value().toString().isEmpty()) continue;
+        occupied.insert(QKeySequence::fromString(it.value().toString(), QKeySequence::PortableText)
+                            .toString(QKeySequence::PortableText));
+    }
+    for (auto it = values.begin(); it != values.end(); ++it) {
+        if (!it.key().startsWith(QStringLiteral("shortcuts/")) || explicitValues.contains(it.key())
+            || it.value().toString().isEmpty()) continue;
+        const auto normalized = QKeySequence::fromString(it.value().toString(), QKeySequence::PortableText)
+                                    .toString(QKeySequence::PortableText);
+        if (occupied.contains(normalized)) it.value() = QString{};
+        else occupied.insert(normalized);
+    }
+}
+}
 SettingsFile::SettingsFile(QVariantMap defaults)
     : m_defaults(std::move(defaults)), m_values(m_defaults)
     , m_file(QDir(Platform::appConfigDirectory())
@@ -29,15 +50,21 @@ QVariantMap SettingsFile::document(const QVariantMap& values) {
     }
     return root;
 }
-bool SettingsFile::flatten(const QVariantMap& root, QVariantMap& values) {
+bool SettingsFile::flatten(const QVariantMap& root, QVariantMap& values, bool restoringDefaults) {
+    QVariantMap explicitValues;
     for (auto it = root.cbegin(); it != root.cend(); ++it) {
         if (it.key() == QStringLiteral("version") || it.key() == QStringLiteral("kind")) continue;
         if (it.value().typeId() != QMetaType::QVariantMap || !document(m_defaults).contains(it.key())) {
             m_error = QStringLiteral("Unknown settings section or non-mapping value: %1").arg(it.key()); return false;
         }
         const auto group = it.value().toMap();
-        for (auto field = group.cbegin(); field != group.cend(); ++field) values[it.key() + u'/' + field.key()] = field.value();
+        for (auto field = group.cbegin(); field != group.cend(); ++field) {
+            const auto key = it.key() + u'/' + field.key();
+            values[key] = field.value();
+            explicitValues[key] = field.value();
+        }
     }
+    if (restoringDefaults) preserveExplicitShortcuts(values, explicitValues);
     return validate(values);
 }
 bool SettingsFile::validate(QVariantMap& values) {
@@ -133,6 +160,7 @@ bool SettingsFile::reload() {
         if (legacy.status() != QSettings::NoError) {
             m_file.reject(QStringLiteral("Cannot migrate settings.ini; original file preserved.")); return false;
         }
+        QVariantMap explicitValues;
         for (const auto& key : legacy.allKeys()) {
             if (!m_defaults.contains(key)) { m_file.reject(QStringLiteral("Unknown legacy setting: %1. Original file preserved.").arg(key)); return false; }
             auto value = legacy.value(key);
@@ -140,10 +168,12 @@ bool SettingsFile::reload() {
                 m_file.reject(QStringLiteral("Cannot migrate setting: %1. Original file preserved.").arg(key)); return false;
             }
             next[key] = value;
+            explicitValues[key] = value;
         }
+        preserveExplicitShortcuts(next, explicitValues);
         if (!validate(next)) { m_file.reject(m_error); return false; }
         if (!m_file.save(document(next))) return false;
-    } else if (!flatten(root, next)) { m_file.reject(m_error); return false; }
+    } else if (!flatten(root, next, true)) { m_file.reject(m_error); return false; }
     m_values = next;
     return true;
 }

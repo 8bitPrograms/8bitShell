@@ -12,6 +12,8 @@
 
 namespace bitshell::core {
 
+class PasswordBroker;
+
 class SftpController : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
@@ -137,6 +139,7 @@ private:
 
     QVector<Entry> m_entries;
     QProcess m_process;
+    std::unique_ptr<PasswordBroker> m_passwordBroker;
     QVariantMap m_profile;
     State m_state = State::Disconnected;
     Operation m_operation = Operation::None;

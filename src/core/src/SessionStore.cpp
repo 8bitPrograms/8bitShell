@@ -3,12 +3,14 @@
 #include <bitshell/core/PrivateFile.h>
 #include <bitshell/core/SshSecurity.h>
 #include <bitshell/core/ConnectionRouting.h>
+#include <bitshell/core/PasswordStore.h>
 
 #include <QCollator>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -65,6 +67,90 @@ QString localFilePath(const QString& source) {
     }
     return source;
 }
+
+QString canonicalSshHost(QString host) {
+    if (!SshSecurity::safeHost(host)) return {};
+    if (host.startsWith(u'[') && host.endsWith(u']')) host = host.mid(1, host.size() - 2);
+    if (host.contains(u':')) {
+        QHostAddress address;
+        if (!address.setAddress(host)) return {};
+        return QStringLiteral("ipv6:") + address.toString();
+    }
+    // A final DNS root label does not change the target. Never resolve a DNS
+    // alias or compare substrings: both could select a different saved account.
+    if (host.endsWith(u'.')) host.chop(1);
+    return host.isEmpty() ? QString{} : QStringLiteral("host:") + host.toCaseFolded();
+}
+
+QVariantMap effectiveConnection(const QVariantMap& profile, const QVariantMap& folders) {
+    auto selection = profile.value(QStringLiteral("connection")).toMap();
+    if (selection.value(QStringLiteral("mode")) != QStringLiteral("inherit")) return selection;
+    QString folder = profile.value(QStringLiteral("group")).toString();
+    for (;;) {
+        if (folders.contains(folder)) {
+            selection = folders.value(folder).toMap();
+            if (selection.value(QStringLiteral("mode")) != QStringLiteral("inherit")) return selection;
+        }
+        if (folder.isEmpty()) return {{QStringLiteral("mode"), QStringLiteral("direct")}};
+        folder = parentFolder(folder);
+    }
+}
+
+QVariantMap candidateResponse(QVariantList matches, int revision, int limit, bool cyberArkEnabled) {
+    // The whole saved account set is returned, not an arbitrary first account.
+    // Stable ordering also keeps keyboard selection predictable across reloads.
+    std::sort(matches.begin(), matches.end(), [cyberArkEnabled](const QVariant& a, const QVariant& b) {
+        const auto left = a.toMap(), right = b.toMap();
+        if (left.value(QStringLiteral("valid")) != right.value(QStringLiteral("valid")))
+            return left.value(QStringLiteral("valid")).toBool();
+        if (cyberArkEnabled && left.value(QStringLiteral("connectionMode")) != right.value(QStringLiteral("connectionMode")))
+            return left.value(QStringLiteral("connectionMode")) == QStringLiteral("cyberark");
+        for (const auto& key : {QStringLiteral("group"), QStringLiteral("name"), QStringLiteral("account")}) {
+            const auto first = left.value(key).toString().toCaseFolded(), second = right.value(key).toString().toCaseFolded();
+            if (first != second) return first < second;
+        }
+        if (left.value(QStringLiteral("port")) != right.value(QStringLiteral("port")))
+            return left.value(QStringLiteral("port")).toInt() < right.value(QStringLiteral("port")).toInt();
+        const auto leftId = left.value(QStringLiteral("id"), left.value(QStringLiteral("routeId"))).toString();
+        const auto rightId = right.value(QStringLiteral("id"), right.value(QStringLiteral("routeId"))).toString();
+        if (leftId != rightId) return leftId < rightId;
+        return left.value(QStringLiteral("routeId")).toString() < right.value(QStringLiteral("routeId")).toString();
+    });
+    const auto total = matches.size();
+    if (matches.size() > std::clamp(limit, 1, 200)) matches.resize(std::clamp(limit, 1, 200));
+    return {{QStringLiteral("results"), matches}, {QStringLiteral("total"), total},
+            {QStringLiteral("revision"), revision}};
+}
+
+bool candidateMatchesUser(const QVariantMap& row, const QString& user) {
+    return user.isEmpty() || user == row.value(QStringLiteral("accountUser")).toString()
+        || user == row.value(QStringLiteral("account")).toString();
+}
+
+// Explicit catalog deletion removes its credential too. If catalog persistence
+// fails, restore removed credentials before returning the original error.
+struct SavedPasswordRemoval {
+    QList<QPair<QVariantMap, QByteArray>> removed;
+    ~SavedPasswordRemoval() { clear(); }
+    void clear() { for (auto& item : removed) item.second.fill('\0'); removed.clear(); }
+    bool stage(const QVariantMap& profile, QString& error) {
+        if (PasswordStore::binding(profile).isEmpty()) return true;
+        auto value = PasswordStore::read(profile);
+        if (!value) { error = value.error(); return false; }
+        if (value->isEmpty()) return true;
+        removed.append({profile, std::move(*value)});
+        const auto result = PasswordStore::remove(profile);
+        if (!result) { error = result.error(); return false; }
+        return true;
+    }
+    void rollback(QString& error) {
+        for (auto& item : removed) {
+            const auto result = PasswordStore::write(item.first, item.second);
+            if (!result) error += QStringLiteral(" Password rollback failed: %1").arg(result.error());
+        }
+        clear();
+    }
+};
 
 } // namespace
 
@@ -136,6 +222,8 @@ QVariant SessionStore::data(const QModelIndex& index, int role) const {
         return session.compression;
     case BackspaceModeRole:
         return session.backspaceMode;
+    case AuthenticationModeRole:
+        return session.authenticationMode;
     default:
         return {};
     }
@@ -157,6 +245,7 @@ QHash<int, QByteArray> SessionStore::roleNames() const {
         {AgentForwardingRole, QByteArrayLiteral("agentForwarding")},
         {CompressionRole, QByteArrayLiteral("compression")},
         {BackspaceModeRole, QByteArrayLiteral("backspaceMode")},
+        {AuthenticationModeRole, QByteArrayLiteral("authenticationMode")},
     };
 }
 
@@ -306,6 +395,109 @@ QVariantMap SessionStore::search(const QString& query, int limit) const {
     for (int index = 0; index < resultCount; ++index)
         results << toMap(m_sessions.at(matches[index].row));
     return {{QStringLiteral("results"), results}, {QStringLiteral("total"), matches.size()}};
+}
+
+QVariantMap SessionStore::parseSshTarget(const QString& text) const {
+    const auto parsed = SshSecurity::quickProfile(text);
+    return parsed ? *parsed : QVariantMap{};
+}
+
+QString SessionStore::sshHostKey(const QString& host) const {
+    return canonicalSshHost(host);
+}
+
+QVariantMap SessionStore::sshCandidates(const QString& host, const QString& user,
+                                        int port, bool cyberArkEnabled,
+                                        const QString& routingIdentity, int limit) const {
+    const QString target = canonicalSshHost(host);
+    if (target.isEmpty() || !SshSecurity::safeUser(user) || port < 0 || port > 65535)
+        return candidateResponse({}, m_revision, limit, cyberArkEnabled);
+    QVariantList matches;
+    for (const auto& session : m_sessions) {
+        if (canonicalSshHost(session.host) != target || (port != 0 && session.port != port)) continue;
+        const auto candidate = describeSshCandidate(toMap(session), cyberArkEnabled, routingIdentity, QStringLiteral("session"));
+        if (candidateMatchesUser(candidate, user)) matches.append(candidate);
+    }
+    return candidateResponse(matches, m_revision, limit, cyberArkEnabled);
+}
+
+QVariantMap SessionStore::sshRouteCandidates(const QString& host, const QString& user,
+                                             int port, bool cyberArkEnabled,
+                                             const QString& routingIdentity, int limit) const {
+    if (!cyberArkEnabled || canonicalSshHost(host).isEmpty() || !SshSecurity::safeUser(user)
+        || port < 0 || port > 65535)
+        return candidateResponse({}, m_revision, limit, cyberArkEnabled);
+    QVariantList matches;
+    for (auto iterator = m_routes.cbegin(); iterator != m_routes.cend(); ++iterator) {
+        const auto route = iterator.value().toMap();
+        const QVariantMap profile{{QStringLiteral("name"), route.value(QStringLiteral("name"), iterator.key())},
+            {QStringLiteral("host"), host}, {QStringLiteral("port"), port == 0 ? 22 : port},
+            {QStringLiteral("connection"), QVariantMap{{QStringLiteral("mode"), QStringLiteral("route")},
+                                                     {QStringLiteral("route"), iterator.key()}}}};
+        const auto candidate = describeSshCandidate(profile, true, routingIdentity, QStringLiteral("route"));
+        if (candidateMatchesUser(candidate, user)) matches.append(candidate);
+    }
+    return candidateResponse(matches, m_revision, limit, cyberArkEnabled);
+}
+
+QVariantMap SessionStore::describeSshCandidate(const QVariantMap& profile, bool cyberArkEnabled,
+                                               const QString& routingIdentity, const QString& kind) const {
+    const auto selection = effectiveConnection(profile, m_folderConnections);
+    const bool routed = selection.value(QStringLiteral("mode")) == QStringLiteral("route");
+    const QString routeId = routed ? selection.value(QStringLiteral("route")).toString() : QString{};
+    const auto route = m_routes.value(routeId).toMap();
+    QString accountName = profile.value(QStringLiteral("user")).toString();
+    QString accountLabel = accountName;
+    bool accountKnown = true;
+    if (routed) {
+        const auto account = profile.value(QStringLiteral("connection")).toMap().value(QStringLiteral("account"),
+            selection.value(QStringLiteral("account"), route.value(QStringLiteral("account")))).toMap();
+        const bool personal = account.value(QStringLiteral("source")) == QStringLiteral("identity");
+        accountKnown = !account.isEmpty() && (!personal || (!routingIdentity.isEmpty()
+            && ConnectionRouting::validIdentity(routingIdentity)));
+        accountName = personal ? routingIdentity + account.value(QStringLiteral("suffix")).toString()
+                               : account.value(QStringLiteral("name")).toString();
+        accountLabel = personal && !accountKnown
+            ? QStringLiteral("<employee>") + account.value(QStringLiteral("suffix")).toString() : accountName;
+        const QString domain = account.value(QStringLiteral("domain")).toString();
+        if (!domain.isEmpty()) accountLabel += u'@' + domain;
+    }
+    // Account names are case-sensitive. For CyberArk this is the target
+    // account, never the direct-only profile user or the gateway operator.
+    const auto prepared = ConnectionRouting::prepare(profile, m_routes, m_folderConnections, routingIdentity);
+    QString reason = prepared ? SshSecurity::validateProfile(*prepared) : prepared.error();
+    if (routed && !cyberArkEnabled)
+        reason = QStringLiteral("Enable CyberArk mode in Personal profile to use this saved route.");
+    const QString identityKey = profile.value(QStringLiteral("identityKey")).toString();
+    const QString identityFile = profile.value(QStringLiteral("identityFile")).toString();
+    QString authentication = QStringLiteral("Default SSH authentication");
+    if (profile.value(QStringLiteral("authenticationMode")) == QStringLiteral("password")) {
+        authentication = PasswordStore::has(passwordProfile(profile))
+                             ? QStringLiteral("Saved password") : QStringLiteral("Password");
+    } else if (identityKey == QStringLiteral("none")) {
+        authentication = QStringLiteral("No saved SSH key");
+    } else if (!identityKey.isEmpty()) {
+        authentication = QStringLiteral("Saved SSH key");
+    } else if (!identityFile.isEmpty()) {
+        QString path = identityFile;
+        path.replace(u'\\', u'/');
+        authentication = QStringLiteral("Key file: %1").arg(path.section(u'/', -1));
+    }
+    return {
+        {QStringLiteral("id"), profile.value(QStringLiteral("id")).toString()},
+        {QStringLiteral("name"), profile.value(QStringLiteral("name")).toString()},
+        {QStringLiteral("host"), profile.value(QStringLiteral("host")).toString()},
+        {QStringLiteral("user"), profile.value(QStringLiteral("user")).toString()},
+        {QStringLiteral("port"), profile.value(QStringLiteral("port"), 22)},
+        {QStringLiteral("group"), profile.value(QStringLiteral("group")).toString()},
+        {QStringLiteral("identityKey"), identityKey}, {QStringLiteral("identityFile"), identityFile},
+        {QStringLiteral("authentication"), authentication}, {QStringLiteral("account"), accountLabel},
+        {QStringLiteral("authenticationMode"), profile.value(QStringLiteral("authenticationMode"), QStringLiteral("auto"))},
+        {QStringLiteral("accountUser"), accountKnown ? accountName : QString{}}, {QStringLiteral("kind"), kind},
+        {QStringLiteral("connectionMode"), routed ? QStringLiteral("cyberark") : QStringLiteral("direct")},
+        {QStringLiteral("routeId"), routeId}, {QStringLiteral("routeName"), route.value(QStringLiteral("name"), routeId)},
+        {QStringLiteral("gateway"), route.value(QStringLiteral("host")).toString()},
+        {QStringLiteral("valid"), reason.isEmpty()}, {QStringLiteral("reason"), reason}};
 }
 
 QVariantList SessionStore::treeRows(const QString& filter,
@@ -494,6 +686,11 @@ bool SessionStore::removeSession(int row) {
         return false;
     }
     const Session removed = m_sessions.at(row);
+    SavedPasswordRemoval passwordRemoval;
+    QString passwordError;
+    if (!passwordRemoval.stage(passwordProfile(toMap(removed)), passwordError)) {
+        passwordRemoval.rollback(passwordError); setLastError(passwordError); return false;
+    }
     beginRemoveRows({}, row, row);
     m_sessions.removeAt(row);
     endRemoveRows();
@@ -501,12 +698,105 @@ bool SessionStore::removeSession(int row) {
         beginInsertRows({}, row, row);
         m_sessions.insert(row, removed);
         endInsertRows();
+        passwordError = m_lastError;
+        passwordRemoval.rollback(passwordError);
+        setLastError(passwordError);
         return false;
     }
     setLastError({});
     emit countChanged();
     advanceRevision();
     return true;
+}
+
+QVariantMap SessionStore::passwordProfile(const QVariantMap& profile) const {
+    auto result = profile;
+    result[QStringLiteral("connection")] = effectiveConnection(profile, m_folderConnections);
+    return result;
+}
+
+QVariantMap SessionStore::passwordStatus(const QVariantMap& profile) const {
+    auto resolved = passwordProfile(profile);
+    // Unsaved forms have no id yet. This temporary id is used only to validate
+    // eligibility; it never creates or reads a real saved credential.
+    const bool saved = !resolved.value(QStringLiteral("id")).toString().isEmpty();
+    if (!saved) resolved[QStringLiteral("id")] = QStringLiteral("unsaved-session");
+    const bool eligible = !PasswordStore::binding(resolved).isEmpty();
+    const bool available = PasswordStore::available();
+    QString reason;
+    if (!eligible) reason = QStringLiteral("Remembering a password requires a direct SSH connection, an explicit username, and no proxy jump. You can still enter a password when connecting.");
+    else if (!available) reason = QStringLiteral("Secure password storage is unavailable on this device. You can still enter a password when connecting.");
+    return {{QStringLiteral("eligible"), eligible}, {QStringLiteral("available"), available},
+        {QStringLiteral("stored"), saved && eligible && available && PasswordStore::has(resolved)},
+        {QStringLiteral("backend"), PasswordStore::backendName()}, {QStringLiteral("reason"), reason}};
+}
+
+int SessionStore::saveSessionWithPassword(int row, const QVariantMap& values,
+                                         const QString& password, const QString& action) {
+    if (row < -1 || (row >= 0 && !isValidRow(row))) {
+        setLastError(QStringLiteral("Session does not exist")); return -1;
+    }
+    if (!QStringList{QStringLiteral("keep"), QStringLiteral("replace"), QStringLiteral("remove")}.contains(action)) {
+        setLastError(QStringLiteral("Invalid password action.")); return -1;
+    }
+    if (row >= 0 && !values.value(QStringLiteral("id")).toString().isEmpty()
+        && values.value(QStringLiteral("id")).toString() != m_sessions.at(row).id) {
+        setLastError(QStringLiteral("The edited session changed or moved. Reopen it before saving.")); return -1;
+    }
+    Session next = fromMap(values, row < 0 ? nullptr : &m_sessions.at(row));
+    if (row >= 0) next.id = m_sessions.at(row).id;
+    const auto nextValues = toMap(next);
+    const auto nextPasswordProfile = passwordProfile(nextValues);
+    const auto oldPasswordProfile = row < 0 ? QVariantMap{} : passwordProfile(toMap(m_sessions.at(row)));
+    const auto nextBinding = PasswordStore::binding(nextPasswordProfile);
+    const auto oldBinding = PasswordStore::binding(oldPasswordProfile);
+    QByteArray replacedPassword;
+    bool wrotePassword = false;
+    if (action == QStringLiteral("replace")) {
+        if (nextBinding.isEmpty()) {
+            setLastError(QStringLiteral("A saved password requires direct SSH with a username and no proxy jump.")); return -1;
+        }
+        auto previous = PasswordStore::read(nextPasswordProfile);
+        if (!previous) { setLastError(previous.error()); return -1; }
+        replacedPassword = std::move(*previous);
+        auto bytes = password.toUtf8();
+        const auto written = PasswordStore::write(nextPasswordProfile, bytes);
+        bytes.fill('\0');
+        if (!written) {
+            replacedPassword.fill('\0');
+            setLastError(written.error()); return -1;
+        }
+        wrotePassword = true;
+    }
+    const int savedRow = row < 0 ? addSession(nextValues) : (updateSession(row, nextValues) ? row : -1);
+    if (savedRow < 0) {
+        QString error = m_lastError;
+        if (wrotePassword) {
+            const auto restored = replacedPassword.isEmpty() ? PasswordStore::remove(nextPasswordProfile)
+                                                             : PasswordStore::write(nextPasswordProfile, replacedPassword);
+            if (!restored) error += QStringLiteral(" Password rollback also failed: %1").arg(restored.error());
+        }
+        replacedPassword.fill('\0');
+        setLastError(error);
+        return -1;
+    }
+    replacedPassword.fill('\0');
+    // A destination/account/authentication change cannot carry its old secret
+    // to the new endpoint. A copied or imported profile never clones a secret.
+    QString cleanupError;
+    if (!oldBinding.isEmpty() && (oldBinding != nextBinding || action == QStringLiteral("remove"))) {
+        const auto removed = PasswordStore::remove(oldPasswordProfile);
+        if (!removed) cleanupError = removed.error();
+    }
+    if (action == QStringLiteral("remove") && nextBinding != oldBinding && !nextBinding.isEmpty()) {
+        const auto removed = PasswordStore::remove(nextPasswordProfile);
+        if (!removed) cleanupError = removed.error();
+    }
+    // A failed cleanup does not pretend the catalog save failed (which would
+    // make a new-form retry create a duplicate). The editor retains this row.
+    if (!cleanupError.isEmpty()) setLastError(QStringLiteral("The session was saved, but its old password could not be removed: %1").arg(cleanupError));
+    advanceRevision();
+    return savedRow;
 }
 
 bool SessionStore::collectDeletion(const QStringList& sessionIds, const QStringList& folders,
@@ -598,9 +888,17 @@ bool SessionStore::deleteEntries(const QStringList& sessionIds, const QStringLis
     document[QStringLiteral("folders")] = nextFolders;
     document[QStringLiteral("folderConnections")] = nextConnections;
     if (!validateYaml(document, error)) { setLastError(error); return false; }
+    SavedPasswordRemoval passwordRemoval;
+    for (const auto& session : m_sessions) if (removedIds.contains(session.id)) {
+        if (!passwordRemoval.stage(passwordProfile(toMap(session)), error)) {
+            passwordRemoval.rollback(error); setLastError(error); return false;
+        }
+    }
     // Save once, atomically and with YamlFile's external-edit conflict check.
     // No model signal or in-memory deletion occurs until persistence succeeds.
-    if (!m_yaml.save(document)) { setLastError(m_yaml.error()); return false; }
+    if (!m_yaml.save(document)) {
+        error = m_yaml.error(); passwordRemoval.rollback(error); setLastError(error); return false;
+    }
 
     beginResetModel();
     m_sessions = std::move(nextSessions);
@@ -1272,6 +1570,7 @@ SessionStore::Session SessionStore::fromMap(const QVariantMap& values,
     session.identityKey = stringValue(QStringLiteral("identityKey"), session.identityKey);
     session.identityFile = stringValue(QStringLiteral("identityFile"), session.identityFile);
     session.proxyJump = stringValue(QStringLiteral("proxyJump"), session.proxyJump);
+    session.authenticationMode = stringValue(QStringLiteral("authenticationMode"), session.authenticationMode);
     if (values.contains(QStringLiteral("connection"))) session.connection = values.value(QStringLiteral("connection")).toMap();
     if (values.contains(QStringLiteral("port"))) {
         session.port = std::clamp(values.value(QStringLiteral("port")).toInt(), 1, 65535);
@@ -1314,6 +1613,7 @@ QVariantMap SessionStore::toMap(const Session& session) {
         {QStringLiteral("agentForwarding"), session.agentForwarding},
         {QStringLiteral("compression"), session.compression},
         {QStringLiteral("backspaceMode"), session.backspaceMode},
+        {QStringLiteral("authenticationMode"), session.authenticationMode},
         {QStringLiteral("connection"), session.connection},
     };
 }
@@ -1418,7 +1718,7 @@ bool SessionStore::validateYaml(const QVariantMap& document, QString& error) {
     };
     const QStringList strings{QStringLiteral("id"), QStringLiteral("name"), QStringLiteral("host"),
         QStringLiteral("user"), QStringLiteral("folder"), QStringLiteral("identityKey"), QStringLiteral("identityFile"),
-        QStringLiteral("proxyJump"), QStringLiteral("backspaceMode")};
+        QStringLiteral("proxyJump"), QStringLiteral("backspaceMode"), QStringLiteral("authenticationMode")};
     const QStringList booleans{QStringLiteral("forwardX11"), QStringLiteral("agentForwarding"), QStringLiteral("compression")};
     QSet<QString> ids;
     for (const auto& value : sessions.toList()) {
@@ -1454,6 +1754,10 @@ bool SessionStore::validateYaml(const QVariantMap& document, QString& error) {
             }
         }
         const auto mode = row.value(QStringLiteral("backspaceMode"), QStringLiteral("default")).toString();
+        const auto authentication = row.value(QStringLiteral("authenticationMode"), QStringLiteral("auto")).toString();
+        if (authentication != QStringLiteral("auto") && authentication != QStringLiteral("password")) {
+            error = QStringLiteral("authenticationMode must be auto or password."); return false;
+        }
         if (!QStringList{QStringLiteral("default"), QStringLiteral("bs"), QStringLiteral("del")}.contains(mode)) {
             error = QStringLiteral("backspaceMode must be default, bs or del."); return false;
         }

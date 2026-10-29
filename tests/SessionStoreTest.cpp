@@ -9,10 +9,12 @@
 #include <bitshell/core/YamlFile.h>
 
 #include <bitshell/core/SessionStore.h>
+#include <bitshell/core/PasswordStore.h>
 
 #include <algorithm>
 
 using bitshell::core::SessionStore;
+using bitshell::core::PasswordStore;
 
 class SessionStoreTest final : public QObject {
     Q_OBJECT
@@ -28,6 +30,9 @@ private slots:
     void bulkDeletionIsAtomicRecursiveAndUsesStableIds();
     void deletionRejectsStaleSelectionAndExternalWrites();
     void bulkFolderMacroCleanupPreservesGroupsAndSiblings();
+    void passwordProfilesKeepSecretsOutsideTheCatalog();
+    void passwordChangesRollbackWhenTheCatalogConflicts();
+    void deletingPasswordProfilesRemovesSecretsAndRollsBackConflicts();
 
 private:
     QTemporaryDir m_configRoot;
@@ -155,6 +160,94 @@ void SessionStoreTest::init() {
     }
     QVERIFY(QDir().mkpath(testRoot));
     qputenv("XDG_CONFIG_HOME", testRoot.toUtf8());
+    qputenv("BIT8SHELL_PROFILE", testRoot.toUtf8());
+}
+
+void SessionStoreTest::passwordProfilesKeepSecretsOutsideTheCatalog() {
+    SessionStore store;
+    QVariantMap profile{{QStringLiteral("host"), QStringLiteral("password.example.test")},
+        {QStringLiteral("user"), QStringLiteral("operator")}, {QStringLiteral("authenticationMode"), QStringLiteral("password")},
+        {QStringLiteral("connection"), QVariantMap{{QStringLiteral("mode"), QStringLiteral("inherit")}}}};
+    QVERIFY(store.passwordStatus(profile).value(QStringLiteral("eligible")).toBool());
+    QCOMPARE(store.saveSessionWithPassword(-1, profile, {}, QStringLiteral("keep")), 0);
+    QCOMPARE(store.get(0).value(QStringLiteral("authenticationMode")).toString(), QStringLiteral("password"));
+    QVERIFY(!store.passwordStatus(store.get(0)).value(QStringLiteral("stored")).toBool());
+#ifndef Q_OS_WIN
+    QSKIP("Persistent password transactions use the isolated Windows DPAPI backend here; no desktop keyring prompt in CI.");
+#endif
+    const QString secret = QStringLiteral("Private-password-7! λ");
+    QCOMPARE(store.saveSessionWithPassword(0, profile, secret, QStringLiteral("replace")), 0);
+    auto saved = store.prepareProfile(store.get(0), {}).value(QStringLiteral("profile")).toMap();
+    QVERIFY(PasswordStore::has(saved));
+    QCOMPARE(PasswordStore::read(saved).value(), secret.toUtf8());
+    QVERIFY(store.passwordStatus(store.get(0)).value(QStringLiteral("stored")).toBool());
+    const auto candidates = store.sshCandidates(QStringLiteral("password.example.test"), {}, 0, false, {}).value(QStringLiteral("results")).toList();
+    QCOMPARE(candidates.first().toMap().value(QStringLiteral("authentication")).toString(), QStringLiteral("Saved password"));
+    QVERIFY(!store.get(0).contains(QStringLiteral("password")));
+    QFile catalog(store.storagePath()); QVERIFY(catalog.open(QIODevice::ReadOnly));
+    QVERIFY(!catalog.readAll().contains(secret.toUtf8())); catalog.close();
+    const auto exported = QDir(qEnvironmentVariable("XDG_CONFIG_HOME")).filePath(QStringLiteral("export.yaml"));
+    QVERIFY(store.exportYaml(exported));
+    QFile exportedFile(exported); QVERIFY(exportedFile.open(QIODevice::ReadOnly));
+    QVERIFY(!exportedFile.readAll().contains(secret.toUtf8())); exportedFile.close();
+    QCOMPARE(store.duplicateSession(0), 1);
+    QVERIFY(!store.passwordStatus(store.get(1)).value(QStringLiteral("stored")).toBool());
+    QCOMPARE(store.saveSessionWithPassword(0, {{QStringLiteral("name"), QStringLiteral("Renamed")}}, {}, QStringLiteral("keep")), 0);
+    QCOMPARE(PasswordStore::read(saved).value(), secret.toUtf8());
+    QCOMPARE(store.saveSessionWithPassword(0, {{QStringLiteral("host"), QStringLiteral("other.example.test")}}, {}, QStringLiteral("keep")), 0);
+    QVERIFY(!PasswordStore::has(saved));
+    QVERIFY(!store.passwordStatus(store.get(0)).value(QStringLiteral("stored")).toBool());
+    QCOMPARE(store.saveSessionWithPassword(0, {}, secret, QStringLiteral("replace")), 0);
+    auto changed = store.prepareProfile(store.get(0), {}).value(QStringLiteral("profile")).toMap();
+    QCOMPARE(store.saveSessionWithPassword(0, {}, {}, QStringLiteral("remove")), 0);
+    QVERIFY(!PasswordStore::has(changed));
+    auto routed = profile;
+    routed[QStringLiteral("connection")] = QVariantMap{{QStringLiteral("mode"), QStringLiteral("route")}, {QStringLiteral("route"), QStringLiteral("missing")}};
+    QVERIFY(!store.passwordStatus(routed).value(QStringLiteral("eligible")).toBool());
+    QCOMPARE(store.saveSessionWithPassword(-1, routed, {}, QStringLiteral("keep")), 2); // Manual password remains valid metadata.
+}
+
+void SessionStoreTest::passwordChangesRollbackWhenTheCatalogConflicts() {
+#ifndef Q_OS_WIN
+    QSKIP("Isolated DPAPI transaction coverage is Windows-only.");
+#endif
+    SessionStore store;
+    const QVariantMap profile{{QStringLiteral("host"), QStringLiteral("rollback.example.test")},
+        {QStringLiteral("user"), QStringLiteral("operator")}, {QStringLiteral("authenticationMode"), QStringLiteral("password")}};
+    QCOMPARE(store.saveSessionWithPassword(-1, profile, QStringLiteral("original-secret"), QStringLiteral("replace")), 0);
+    const auto before = store.get(0);
+    QFile file(store.storagePath()); QVERIFY(file.open(QIODevice::Append));
+    QVERIFY(file.write("\n# external editor\n") > 0); file.close();
+    QCOMPARE(store.saveSessionWithPassword(0, {}, QStringLiteral("replacement-secret"), QStringLiteral("replace")), -1);
+    QCOMPARE(PasswordStore::read(before).value(), QByteArrayLiteral("original-secret"));
+    auto changed = before; changed[QStringLiteral("host")] = QStringLiteral("new.example.test");
+    QCOMPARE(store.saveSessionWithPassword(0, changed, QStringLiteral("new-target-secret"), QStringLiteral("replace")), -1);
+    QVERIFY(!PasswordStore::has(changed));
+    QCOMPARE(store.get(0), before);
+    QVERIFY(store.reload());
+    QVERIFY(store.removeSession(0));
+    QVERIFY(!PasswordStore::has(before));
+}
+
+void SessionStoreTest::deletingPasswordProfilesRemovesSecretsAndRollsBackConflicts() {
+#ifndef Q_OS_WIN
+    QSKIP("Isolated DPAPI transaction coverage is Windows-only.");
+#endif
+    SessionStore store;
+    const QVariantMap profile{{QStringLiteral("host"), QStringLiteral("delete.example.test")},
+        {QStringLiteral("user"), QStringLiteral("operator")}, {QStringLiteral("authenticationMode"), QStringLiteral("password")}};
+    QCOMPARE(store.saveSessionWithPassword(-1, profile, QStringLiteral("delete-secret"), QStringLiteral("replace")), 0);
+    const auto saved = store.get(0);
+    QFile file(store.storagePath()); QVERIFY(file.open(QIODevice::Append));
+    QVERIFY(file.write("\n# deletion conflict\n") > 0); file.close();
+    QVERIFY(!store.removeSession(0));
+    QVERIFY(PasswordStore::has(saved));
+    QVERIFY(!store.deleteEntries({}, {}, true, store.revision()));
+    QCOMPARE(PasswordStore::read(saved).value(), QByteArrayLiteral("delete-secret"));
+    QVERIFY(store.reload());
+    QVERIFY(store.deleteEntries({}, {}, true, store.revision()));
+    QVERIFY(!PasswordStore::has(saved));
+    QCOMPARE(store.count(), 0);
 }
 
 void SessionStoreTest::persistsEditableNonSecretProfiles() {

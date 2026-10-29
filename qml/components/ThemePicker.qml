@@ -6,7 +6,7 @@ import BitShell
 
 AppComboBox {
     id: control
-    property string selectedId: "blueberry"
+    property string selectedId: ""
     signal chosen(string themeId)
     textRole: "name"
     valueRole: "id"
@@ -19,7 +19,7 @@ AppComboBox {
     Binding {
         target: control
         property: "currentIndex"
-        value: Theme.themeIndex(control.selectedId, control.model)
+        value: Theme.themeIndex(control.selectedId, control.model, -1)
     }
     contentItem: Text { textFormat: Text.PlainText;
         leftPadding: 10

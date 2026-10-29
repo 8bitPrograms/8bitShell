@@ -21,6 +21,8 @@ class SessionStore : public QAbstractListModel {
     Q_PROPERTY(QVariantMap routes READ routes NOTIFY revisionChanged)
 
 public:
+    Q_INVOKABLE QVariantMap parseSshTarget(const QString& text) const;
+    Q_INVOKABLE QString sshHostKey(const QString& host) const;
     enum Role {
         IdRole = Qt::UserRole + 1,
         NameRole,
@@ -36,6 +38,7 @@ public:
         AgentForwardingRole,
         CompressionRole,
         BackspaceModeRole,
+        AuthenticationModeRole,
     };
     Q_ENUM(Role)
 
@@ -57,11 +60,26 @@ public:
     Q_INVOKABLE QVariantMap getById(const QString& id) const;
     Q_INVOKABLE int find(const QString& query) const;
     Q_INVOKABLE QVariantMap search(const QString& query, int limit = 80) const;
+    // Exact target lookup for local command assistance. Empty user / port 0 leave
+    // those constraints unspecified. Rows contain metadata only; reconnect by id
+    // through prepareProfile() so catalog changes and approvals are checked again.
+    Q_INVOKABLE QVariantMap sshCandidates(const QString& host, const QString& user,
+                                          int port, bool cyberArkEnabled,
+                                          const QString& routingIdentity, int limit = 40) const;
+    // host must be one already-parsed DNS name or IP, without user/options/URL.
+    // Explicit route choices may accompany saved rows, but never replace them.
+    Q_INVOKABLE QVariantMap sshRouteCandidates(const QString& host, const QString& user,
+                                               int port, bool cyberArkEnabled,
+                                               const QString& routingIdentity, int limit = 40) const;
     Q_INVOKABLE QVariantList treeRows(const QString& filter,
                                       const QStringList& expandedFolders) const;
     Q_INVOKABLE QStringList folderPaths() const;
     Q_INVOKABLE int addSession(const QVariantMap& values);
     Q_INVOKABLE bool updateSession(int row, const QVariantMap& values);
+    // Password text is write-only and never enters a profile map or YAML.
+    Q_INVOKABLE int saveSessionWithPassword(int row, const QVariantMap& values,
+                                            const QString& password, const QString& action);
+    Q_INVOKABLE QVariantMap passwordStatus(const QVariantMap& profile) const;
     Q_INVOKABLE bool removeSession(int row);
     Q_INVOKABLE QVariantMap deletionPreview(const QStringList& sessionIds,
                                              const QStringList& folders, bool all) const;
@@ -113,12 +131,16 @@ private:
         bool agentForwarding = false;
         bool compression = false;
         QString backspaceMode = QStringLiteral("default");
+        QString authenticationMode = QStringLiteral("auto");
         QVariantMap connection{{QStringLiteral("mode"), QStringLiteral("direct")}};
     };
 
     [[nodiscard]] static Session fromMap(const QVariantMap& values,
                                          const Session* existing = nullptr);
     [[nodiscard]] static QVariantMap toMap(const Session& session);
+    [[nodiscard]] QVariantMap passwordProfile(const QVariantMap& profile) const;
+    [[nodiscard]] QVariantMap describeSshCandidate(const QVariantMap& profile, bool cyberArkEnabled,
+                                                  const QString& routingIdentity, const QString& kind) const;
     [[nodiscard]] static QString normalizeFolderPath(const QString& path);
     void ensureFolderAncestors(const QString& path);
     void advanceRevision();

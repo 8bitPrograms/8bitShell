@@ -53,7 +53,7 @@ PtyProcess::PtyProcess(QObject* parent) : QObject(parent) {}
 PtyProcess::~PtyProcess() { stop(); }
 
 bool PtyProcess::start(const QString& program, const QStringList& arguments, int columns, int rows, QString* errorMessage,
-                       const QString& workingDirectory) {
+                       const QString& workingDirectory, const QProcessEnvironment& environmentOverrides) {
     if (!workingDirectory.isEmpty() && (workingDirectory.contains(QChar::Null)
         || !QDir::isAbsolutePath(workingDirectory) || !QFileInfo(workingDirectory).isDir())) {
         setError(errorMessage, QStringLiteral("The terminal starting directory is invalid or no longer exists.")); return false;
@@ -61,7 +61,7 @@ bool PtyProcess::start(const QString& program, const QStringList& arguments, int
     stop();
     // cmd.exe also parses argv[0] itself and rejects forward-slash executable paths.
     const auto launchArguments = m_interactiveShell
-        ? core::Platform::persistentHistoryArguments(program, arguments) : arguments;
+        ? core::Platform::persistentHistoryArguments(program, arguments, m_shellIntegrationToken) : arguments;
     const QString encoded = core::Platform::windowsCommandLine(QDir::toNativeSeparators(program), launchArguments);
     if (encoded.isEmpty() || !QDir::isAbsolutePath(program) || !QFileInfo(program).isFile()
         || !program.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)) {
@@ -97,6 +97,7 @@ bool PtyProcess::start(const QString& program, const QStringList& arguments, int
         setError(errorMessage, windowsError("Create session job")); DeleteProcThreadAttributeList(attributeList); return false;
     }
     auto environment = core::Platform::isManagedSsh(program) ? core::SshSecurity::environment() : QProcessEnvironment::systemEnvironment();
+    environment.insert(environmentOverrides);
     environment.insert(QStringLiteral("TERM"), QStringLiteral("xterm-256color"));
     environment.insert(QStringLiteral("COLORTERM"), QStringLiteral("truecolor"));
     environment.insert(QStringLiteral("TERM_PROGRAM"), QStringLiteral("bitshell"));

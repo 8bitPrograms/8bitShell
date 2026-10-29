@@ -15,8 +15,10 @@ Rectangle {
     property int currentIndex: -1
     property int nextTabId: 1
     property var startupCommand: []
+    property string startupDirectory: ""
     property int startupTabCount: 1
     property bool performanceProbe: false
+    property bool commandPaletteOpen: false
 
     function performanceSessionDiagnostics() {
         const diagnostics = []
@@ -49,6 +51,29 @@ Rectangle {
     property real tabDragViewportX: -1
     property int contextTabIndex: -1
     readonly property int tabCount: tabsModel.count
+    property int paletteRevision: 0
+    function collectPaletteRows() {
+        const rows = []
+        for (let index = 0; index < tabsModel.count; ++index) {
+            const tab = tabsModel.get(index)
+            const terminal = terminalForId(tab.tabId)
+            const connection = terminal ? terminal.currentSshConnection : ({})
+            const saved = tab.mode === "quick" ? SessionStore.parseSshTarget(tab.launchCommand) : profileForTab(index)
+            const remote = tab.mode === "profile" || tab.mode === "quick"
+            const local = tab.localProfileJson ? JSON.parse(tab.localProfileJson) : ({})
+            rows.push({id: tab.tabId, name: tab.label, host: connection.host || (remote ? saved.host || tab.host : ""),
+                user: connection.user || (remote ? saved.user || tab.user : ""), port: connection.port || saved.port || tab.port,
+                gateway: connection.gateway || (saved.psmp ? saved.psmp.route.host : ""), localName: local.name || tab.label,
+                active: index === currentIndex, running: Boolean(terminal && terminal.running)})
+        }
+        return rows
+    }
+    function activatePaletteTab(id) {
+        const index = indexForTabId(id)
+        if (index < 0 || securityPromptActive) return false
+        activate(index)
+        return true
+    }
     readonly property string activeTabId: currentIndex >= 0 ? tabsModel.get(currentIndex).tabId : ""
     readonly property bool activeRemote: currentIndex >= 0 && (tabsModel.get(currentIndex).mode === "profile" || tabsModel.get(currentIndex).mode === "quick")
     readonly property bool securityPromptActive: {
@@ -74,6 +99,13 @@ Rectangle {
         id: tabsModel
         dynamicRoles: true
     }
+    Connections {
+        target: tabsModel
+        function onDataChanged() { ++root.paletteRevision }
+        function onCountChanged() { ++root.paletteRevision }
+        function onRowsMoved() { ++root.paletteRevision }
+    }
+    onCurrentIndexChanged: ++paletteRevision
 
     function defaultTabData() {
         return {
@@ -232,9 +264,9 @@ Rectangle {
     function newLocalSession() {
         newLocalProfile(LocalProfileStore.defaultProfileId)
     }
-    function newLocalProfile(profileId) {
+    function newLocalProfile(profileId, directoryOverride) {
         if (securityPromptActive) return
-        const profile = LocalProfileStore.profile(profileId)
+        const profile = Object.assign({}, LocalProfileStore.profile(profileId))
         if (!profile.id) {
             connectionError.message = "This local profile is unavailable. Choose a default in Settings → Local profiles."
             connectionError.open()
@@ -243,6 +275,9 @@ Rectangle {
         const tab = defaultTabData()
         tab.mode = "localProfile"
         tab.label = profile.name
+        // A launcher-supplied folder overrides this initial tab only; saved
+        // profile directories still apply to later tabs and explicit choices.
+        if (directoryOverride) profile.workingDirectory = directoryOverride
         tab.localProfileJson = JSON.stringify(profile)
         tabsModel.append(tab)
         activate(tabsModel.count - 1)
@@ -485,6 +520,7 @@ Rectangle {
     Component.onCompleted: {
         for (let index = 0; index < startupTabCount; ++index) {
             if (startupCommand.length > 0) newCommandSession(startupCommand)
+            else if (startupDirectory.length > 0) newLocalProfile(LocalProfileStore.defaultProfileId, startupDirectory)
             else newLocalSession()
         }
     }
@@ -560,8 +596,10 @@ Rectangle {
                         required property string tabColor
                         property bool dragInProgress: false
                         readonly property color categoryColor: root.tabColorValue(tabColor)
+                        readonly property bool accentTab: index === root.currentIndex
+                                                          && Theme.cyberpunkChrome && tabColor.length === 0
                         readonly property color baseColor: index === root.currentIndex
-                                                           ? Theme.canvas
+                                                           ? (accentTab ? Theme.activeTabBackground : Theme.canvas)
                                                            : root.draggedTabId.length > 0
                                                              && root.tabDropIndex === index
                                                              ? Theme.surfaceSelected
@@ -618,13 +656,15 @@ Rectangle {
                                 Layout.preferredWidth: 7
                                 Layout.preferredHeight: 7
                                 radius: 4
-                                color: tabDelegate.processRunning ? Theme.green : Theme.textFaint
+                                color: tabDelegate.accentTab ? Theme.activeTabText
+                                       : tabDelegate.processRunning ? Theme.green : Theme.textFaint
+                                opacity: tabDelegate.accentTab && !tabDelegate.processRunning ? 0.35 : 1
                             }
                             Text {
                                 visible: tabDelegate.pinned
                                 text: "◆"
                                 textFormat: Text.PlainText
-                                color: Theme.accent
+                                color: tabDelegate.accentTab ? Theme.activeTabText : Theme.accent
                                 font.pixelSize: Theme.uiFontSize(8)
                                 ToolTip.visible: pinHover.hovered
                                 ToolTip.text: "Pinned tab"
@@ -632,12 +672,13 @@ Rectangle {
                             }
                             Text { textFormat: Text.PlainText;
                                 id: tabText
+                                objectName: "openTabLabel:" + tabDelegate.tabId
                                 Layout.fillWidth: true
                                 text: tabDelegate.label
                                 color: tabDelegate.tabColor.length > 0
                                        ? Theme.text
                                        : tabDelegate.index === root.currentIndex
-                                       ? Theme.text : Theme.textMuted
+                                       ? Theme.activeTabText : Theme.textMuted
                                 elide: Text.ElideMiddle
                                 font.family: Theme.uiFont
                                 font.pixelSize: Theme.uiFontSize(11)
@@ -646,12 +687,15 @@ Rectangle {
                             }
                             LockIcon {
                                 objectName: "openTabSshLock:" + tabDelegate.tabId
+                                color: tabDelegate.accentTab ? Theme.activeTabText : Theme.textMuted
+                                backgroundColor: tabDelegate.accentTab ? Theme.activeTabBackground : Theme.surface
                                 visible: tabDelegate.mode === "profile" || tabDelegate.mode === "quick"
                                 Layout.preferredWidth: 13; Layout.preferredHeight: 15
                             }
                             Text { textFormat: Text.PlainText;
                                 text: "×"
-                                color: closeHover.containsMouse ? Theme.text : Theme.textFaint
+                                color: tabDelegate.accentTab ? Theme.activeTabText
+                                       : closeHover.containsMouse ? Theme.text : Theme.textFaint
                                 font.family: Theme.uiFont
                                 font.pixelSize: Theme.uiFontSize(13)
 
@@ -677,7 +721,7 @@ Rectangle {
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
                             height: 2
-                            color: Theme.accent
+                            color: Theme.cyberpunkChrome ? Theme.secondaryAccent : Theme.accent
                         }
 
                         MouseArea {
@@ -925,17 +969,20 @@ Rectangle {
                     Connections {
                         target: sessionDelegate.terminal
                         function onBroadcastStateChanged() { ++root.broadcastRevision }
-                        function onRunningChanged() { ++root.broadcastRevision }
+                        function onRunningChanged() { ++root.broadcastRevision; ++root.paletteRevision }
+                        function onCurrentSshConnectionChanged() { ++root.paletteRevision }
                     }
                 }
 
                 onItemAdded: function(index, item) {
                     ++root.broadcastRevision
+                    ++root.paletteRevision
                     if (index === root.currentIndex)
                         root.scheduleActiveTerminalSync(false)
                 }
                 onItemRemoved: function(index, item) {
                     ++root.broadcastRevision
+                    ++root.paletteRevision
                     const sessionItem = item as TerminalSession
                     if (sessionItem && sessionItem.terminal === root.activeTerminal)
                         root.activeTerminal = null
@@ -970,8 +1017,8 @@ Rectangle {
             objectName: "terminalStatusBar"
             Layout.fillWidth: true
             implicitHeight: 32
-            color: Theme.surface
-            border.color: Theme.borderSoft
+            color: Theme.chromeSurface
+            border.color: Theme.chromeBorder
 
             RowLayout {
                 anchors.fill: parent
@@ -993,7 +1040,7 @@ Rectangle {
                     Layout.maximumWidth: 330
                     text: root.activeTerminal ? root.activeTerminal.statusText : "No active terminal"
                     color: root.activeTerminal && root.activeTerminal.running
-                           ? Theme.textMuted : Theme.red
+                           ? (Theme.cyberpunkChrome ? Theme.secondaryAccent : Theme.textMuted) : Theme.red
                     elide: Text.ElideRight
                     font.family: Theme.uiFont
                     font.pixelSize: Theme.uiFontSize(9)
@@ -1218,6 +1265,8 @@ Rectangle {
         property string message: ""
         title: "Connection blocked"; modal: true; focus: true; width: Math.min(520, parent.width - 40)
         standardButtons: Dialog.Ok
+        footer: AppDialogButtonBox {}
+        onOpened: standardButton(Dialog.Ok).forceActiveFocus()
         contentItem: Text { text: connectionError.message; textFormat: Text.PlainText; color: Theme.text; wrapMode: Text.Wrap }
         background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: Theme.radius }
     }
@@ -1229,6 +1278,7 @@ Rectangle {
         title: "Review CyberArk gateway"; modal: true; focus: true
         width: Math.min(600, parent.width - 40)
         standardButtons: Dialog.Ok | Dialog.Cancel
+        footer: AppDialogButtonBox {}
         onOpened: { approved = false; standardButton(Dialog.Cancel).forceActiveFocus() }
         onAccepted: {
             approved = PersonalProfile.approveRoute(pending.fingerprint)
@@ -1262,17 +1312,17 @@ Rectangle {
     }
     Shortcut {
         sequence: AppSettings.keyBindings.newTab
-        enabled: !root.securityPromptActive
+        enabled: !root.securityPromptActive && !root.commandPaletteOpen
         onActivated: root.newLocalSession()
     }
     Shortcut {
         sequence: AppSettings.keyBindings.closeTab
-        enabled: !root.securityPromptActive
+        enabled: !root.securityPromptActive && !root.commandPaletteOpen
         onActivated: root.closeTab(root.currentIndex)
     }
     Shortcut {
         sequence: AppSettings.keyBindings.nextTab
-        enabled: !root.securityPromptActive
+        enabled: !root.securityPromptActive && !root.commandPaletteOpen
         onActivated: {
             if (tabsModel.count > 1)
                 root.activate((root.currentIndex + 1) % tabsModel.count)

@@ -1,6 +1,12 @@
 ![8bitShell logo](assets/bitshell.svg)
 **Current version: 1.0.0.** Pixel Core branding: teal terminal.
 
+Local build, test, portable launch and troubleshooting instructions: [docs/BUILDING.md](docs/BUILDING.md).
+
+Optional version checks and updates are in **Settings > Updates**. Automatic installation starts disabled. Windows installation adds `8bitshell` to user PATH; see [commands and updates](docs/UPDATES.md).
+
+Click the version seven times in Settings to reveal Blueberi, Raspberi and the Cyberpunk-inspired Silverhand, V and K palettes for both the interface and terminal. Unlocking is saved per profile and keeps the current theme; see [theme unlocking](docs/UPDATES.md#version-and-bonus-themes).
+
 Cross-platform release builds, bundled runtimes, curl installation, native packages and repository maintenance are documented in [docs/RELEASING.md](docs/RELEASING.md). Hosted platform checks remain pending; see [docs/RELEASE-VALIDATION.md](docs/RELEASE-VALIDATION.md).
 
 
@@ -26,6 +32,8 @@ for the native port, build instructions and its separate validation boundaries:
 - a custom Qt Quick desktop shell;
 - a real Linux PTY-backed local terminal rendered inside Qt Quick;
 - direct OpenSSH sessions from Quick Connect and saved profiles;
+- password authentication with optional device-local protected storage, separate from
+  YAML exports, plus the existing key/agent authentication;
 - a private multi-key library for validated OpenSSH/PEM and imported PPK keys, with separate
   application and CyberArk defaults plus assignment-preserving key replacement;
 - structured CyberArk PSMP routes, local employee identity, inherited folder rules,
@@ -39,6 +47,10 @@ for the native port, build instructions and its separate validation boundaries:
   targeting, all-open or visible-page scope, and no automatic keystroke broadcasting;
 - ranked session-search suggestions with names, hosts and folder paths, keyboard selection,
   and live catalog updates;
+- a Ctrl+Shift+P command palette for switching matching open tabs, starting SSH/local
+  sessions, changing themes and toggles, and opening settings sections;
+- keyboard-selectable saved SSH accounts and CyberArk routes at supported local
+  PowerShell/Bash prompts, executing with native SSH in the same terminal;
 - a persistent, human-readable SSH session catalog with nested folders,
   virtualized browsing, path-aware search, remembered expansion state, and persistent
   drag-and-drop moves between folders or back to the catalog root;
@@ -56,7 +68,7 @@ for the native port, build instructions and its separate validation boundaries:
 - a prompt-aware conversation state machine;
 - persistent custom regex highlighting, applied live without changing terminal bytes;
 - plain-text session logging under `~/Documents/8bitShell/Logs`;
-- independent day/night UI and terminal palettes: 15 dark and 6 light interface themes, classic terminal palettes such as XTerm, VGA, rxvt, and Tango, OS/scheduled
+- linked day/night UI and terminal palettes, with an optional **Separate terminal & UI themes** switch; classic terminal palettes such as XTerm, VGA, rxvt, and Tango, OS/scheduled
   automatic switching, and a one-click day/night toggle;
 - global and per-session Backspace byte selection (`DEL/^?` or `BS/^H`) for modern and
   legacy/Oracle terminal environments;

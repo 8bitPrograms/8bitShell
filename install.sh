@@ -3,6 +3,7 @@
 set -eu
 umask 022
 app='8bitShell'
+command_names='8bitshell'
 slug='8bitshell'
 repository="${BIT8SHELL_REPOSITORY:-@REPOSITORY@}"
 version=latest
@@ -146,4 +147,21 @@ else
  [ ! -e "$target" ] || [ -L "$target" ] || die 'An unmanaged application already exists in Applications.'
  ln -s "$current/$app.app" "$apps_dir/.$app.next-$$";mv -fh -- "$apps_dir/.$app.next-$$" "$target"
 fi
+mkdir -p -- "$bin_dir"
+if [ "$system" = linux ];then
+ command_target="$install_root/current/$app"
+else
+ command_target="$install_root/current/$app.app/Contents/MacOS/$app"
+fi
+for command_name in $command_names;do
+ command_file="$bin_dir/$command_name"
+ # An alias may already belong to another tool. Never overwrite it.
+ if [ -e "$command_file" ] || [ -L "$command_file" ];then
+  [ ! -L "$command_file" ] && printf '#!/bin/sh\nexec "%s" "$@"\n' "$command_target" | cmp -s - "$command_file" || die "Command already belongs to another installation: $command_file"
+ else
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$command_target" > "$command_file"
+  chmod 755 "$command_file"
+ fi
+done
+case ":$PATH:" in *":$bin_dir:"*) :;; *) printf 'Commands installed in %s; add that directory to your shell PATH.\n' "$bin_dir";; esac
 printf '%s\n' "$app $release_version installed for your user. Existing profiles and previous versions were kept."

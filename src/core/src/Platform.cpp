@@ -10,7 +10,80 @@
 
 namespace bitshell::core {
 namespace {
+bool validIntegrationToken(const QString& token) {
+    return token.size() >= 16 && token.size() <= 128
+        && std::all_of(token.cbegin(), token.cend(), [](QChar c) {
+            return (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z')
+                || (c >= u'0' && c <= u'9') || c == u'-' || c == u'_';
+        });
+}
+QString shellLiteral(QString value) {
+    return u'\'' + value.replace(u'\'', QStringLiteral("'\\''")) + u'\'';
+}
+QString bashIntegrationScript(const QString& token, const QString& kind, bool login, bool noProfile, bool noRc) {
+    // The rcfile exists only as a process-substitution pipe. Run the same user
+    // startup files before appending our hooks, so their prompt/history setup
+    // cannot accidentally erase integration during initialization.
+    QString script;
+    if (login && !noProfile) {
+        script = QStringLiteral("if [ -r /etc/profile ]; then . /etc/profile; fi\n"
+            "for __8bit_startup in ~/.bash_profile ~/.bash_login ~/.profile; do\n"
+            "  if [ -r \"$__8bit_startup\" ]; then . \"$__8bit_startup\"; break; fi\n"
+            "done\nunset __8bit_startup\n");
+    } else if (!login && !noRc) {
+        script = QStringLiteral("if [ -r ~/.bashrc ]; then . ~/.bashrc; fi\n");
+    }
+    script += QStringLiteral(R"SH(
+# PS0 was introduced in Bash 4.4. Without an execution marker the helper must
+# stay disabled rather than interpreting input inside a running application.
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then return; fi
+__8bit_prompt_integration() {
+    local __8bit_status=$?
+    history -a
+    history -n
+    case "$PS1" in
+        *'\e]133;B;@TOKEN@\a'*) ;;
+        *) PS1='\[\e]777;8bitshell;@TOKEN@;@KIND@\a\]\[\e]133;A;@TOKEN@\a\]'"$PS1"'\[\e]133;B;@TOKEN@\a\]' ;;
+    esac
+    case "${PS0-}" in
+        *$'\e]133;C;@TOKEN@\a'*) ;;
+        *) PS0=$'\e]133;C;@TOKEN@\a'"${PS0-}" ;;
+    esac
+    # A nested shell must not inherit the parent prompt's authentication token.
+    export -n PS0 PS1 PROMPT_COMMAND
+    return "$__8bit_status"
+}
+if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == 'declare -a '* ]]; then
+    PROMPT_COMMAND+=(__8bit_prompt_integration)
+else
+    PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }__8bit_prompt_integration"
+fi
+)SH");
+    return script.replace(QStringLiteral("@TOKEN@"), token).replace(QStringLiteral("@KIND@"), kind);
+}
+QString bashBootstrap(const QString& token, const QString& kind, bool login, bool noProfile = false, bool noRc = false) {
+    return QStringLiteral("exec \"$0\" --noprofile --rcfile <(printf '%s' %1) -i")
+        .arg(shellLiteral(bashIntegrationScript(token, kind, login, noProfile, noRc)));
+}
 #ifdef Q_OS_WIN
+QString powerShellIntegrationScript(const QString& token) {
+    // PSConsoleHostReadLine is the host's actual input boundary. Wrapping it
+    // leaves prompt rendering, history filters, edit modes and key bindings
+    // intact, and marks execution even when history saving is disabled.
+    return QStringLiteral(R"PS(
+try {
+    if ((Get-Module PSReadLine) -and -not (Get-Variable -Name __8bitOriginalReadLine -Scope Global -ErrorAction SilentlyContinue)) {
+        $global:__8bitOriginalReadLine = (Get-Item Function:\PSConsoleHostReadLine -ErrorAction Stop).ScriptBlock
+        function global:PSConsoleHostReadLine {
+            [Console]::Write(([string][char]27 + ']777;8bitshell;@TOKEN@;powershell' + [char]7 + [char]27 + ']133;A;@TOKEN@' + [char]7 + [char]27 + ']133;B;@TOKEN@' + [char]7))
+            try { & $global:__8bitOriginalReadLine } finally {
+                [Console]::Write(([string][char]27 + ']133;C;@TOKEN@' + [char]7))
+            }
+        }
+    }
+} catch {}
+)PS").replace(QStringLiteral("@TOKEN@"), token);
+}
 QString systemDirectory() {
     wchar_t path[MAX_PATH + 1]{};
     const UINT length = GetSystemDirectoryW(path, MAX_PATH + 1);
@@ -127,20 +200,52 @@ QStringList Platform::localShellArguments() {
     return {QStringLiteral("-l")};
 #endif
 }
-QStringList Platform::persistentHistoryArguments(const QString& program, const QStringList& arguments) {
+QStringList Platform::persistentHistoryArguments(const QString& program, const QStringList& arguments,
+                                                 const QString& shellIntegrationToken) {
+    const bool integrate = validIntegrationToken(shellIntegrationToken);
+    const auto name = QFileInfo(program).fileName().toLower();
 #ifndef Q_OS_WIN
-    Q_UNUSED(program);
+    if (integrate && name == QStringLiteral("bash")) {
+        bool login = false, noProfile = false, noRc = false;
+        for (const auto& arg : arguments) {
+            if (arg == QStringLiteral("-l") || arg == QStringLiteral("--login")) login = true;
+            else if (arg == QStringLiteral("-il") || arg == QStringLiteral("-li")) login = true;
+            else if (arg == QStringLiteral("--noprofile")) noProfile = true;
+            else if (arg == QStringLiteral("--norc")) noRc = true;
+            else if (arg != QStringLiteral("-i")) return arguments;
+        }
+        return {QStringLiteral("-c"), bashBootstrap(shellIntegrationToken, QStringLiteral("bash"), login, noProfile, noRc), program};
+    }
     return arguments;
 #else
-    const auto name = QFileInfo(program).fileName().toLower();
+    if (integrate && name == QStringLiteral("wsl.exe")) {
+        // The recognized shape is exactly the default LocalProfileStore launch.
+        // Any extra argument may select a shell/command and remains untouched.
+        if (!arguments.isEmpty() && (arguments.size() != 4
+            || arguments.at(0) != QStringLiteral("--distribution")
+            || arguments.at(2) != QStringLiteral("--cd"))) return arguments;
+        const QString bootstrap = QStringLiteral(
+            "__8bit_shell=${SHELL:-}; "
+            "if command -v getent >/dev/null 2>&1; then "
+            "__8bit_entry=$(getent passwd \"$(id -u)\"); __8bit_login=${__8bit_entry##*:}; "
+            "if [ -x \"$__8bit_login\" ]; then __8bit_shell=$__8bit_login; fi; fi; "
+            "[ -n \"$__8bit_shell\" ] || __8bit_shell=/bin/sh; "
+            "case \"${__8bit_shell##*/}\" in bash) exec \"$__8bit_shell\" -c %1 \"$__8bit_shell\";; "
+            "*) exec \"$__8bit_shell\" -l;; esac")
+            .arg(shellLiteral(bashBootstrap(shellIntegrationToken, QStringLiteral("wsl-bash"), true)));
+        auto result = arguments;
+        result << QStringLiteral("--exec") << QStringLiteral("/bin/sh") << QStringLiteral("-c") << bootstrap;
+        return result;
+    }
     if (name != QStringLiteral("powershell.exe") && name != QStringLiteral("pwsh.exe")) return arguments;
     const auto blocksHistory = [](const QString& argument) {
         const auto token = argument.toLower();
-        return token == QStringLiteral("-command") || token == QStringLiteral("-c")
-            || token == QStringLiteral("-file") || token == QStringLiteral("-f")
-            || token == QStringLiteral("-encodedcommand") || token == QStringLiteral("-enc")
-            || token == QStringLiteral("-e") || token == QStringLiteral("-ec")
-            || token == QStringLiteral("-noninteractive") || token == QStringLiteral("-noni");
+        return (token.size() >= 2 && QStringLiteral("-command").startsWith(token))
+            || token == QStringLiteral("-commandwithargs") || token == QStringLiteral("-cwa")
+            || (token.size() >= 2 && QStringLiteral("-file").startsWith(token))
+            || (token.size() >= 2 && QStringLiteral("-encodedcommand").startsWith(token))
+            || token == QStringLiteral("-ec")
+            || (token.size() >= 5 && QStringLiteral("-noninteractive").startsWith(token));
     };
     if (std::any_of(arguments.cbegin(), arguments.cend(), blocksHistory)) return arguments;
     auto result = arguments;
@@ -148,6 +253,7 @@ QStringList Platform::persistentHistoryArguments(const QString& program, const Q
            << QStringLiteral("try { if (-not (Get-Module PSReadLine)) { Import-Module PSReadLine -ErrorAction Stop }; "
                              "if ((Get-PSReadLineOption).HistorySaveStyle -eq 'SaveAtExit') { "
                              "Set-PSReadLineOption -HistorySaveStyle SaveIncrementally } } catch {}");
+    if (integrate) result.last() += powerShellIntegrationScript(shellIntegrationToken);
     return result;
 #endif
 }
