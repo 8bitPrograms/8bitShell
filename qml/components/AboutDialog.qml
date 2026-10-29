@@ -9,7 +9,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     width: Math.min(parent ? parent.width - 48 : 540, 540)
-    height: Math.min(parent ? parent.height - 48 : 370, 370)
+    height: Math.min(parent ? parent.height - 48 : 400, 400)
     modal: true
     focus: true
     closePolicy: Popup.CloseOnEscape
@@ -95,7 +95,7 @@ Dialog {
         }
         Text {
             Layout.fillWidth: true
-            text: "Built for Linux and Windows · configuration is local and human-readable"
+            text: "GPL-3.0-or-later · built for Linux and Windows · configuration is local and human-readable"
             textFormat: Text.PlainText
             color: Theme.textFaint
             wrapMode: Text.Wrap

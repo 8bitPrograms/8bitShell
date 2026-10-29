@@ -1,10 +1,14 @@
-8bitShell - local evaluation package
+8bitShell
+Copyright (C) 2026 8bitShell contributors
 
-The project license has not been selected. This notice is not a license grant.
-Do not publish or redistribute this evaluation package until the project owner
-has chosen a license and reviewed the deployed third-party components, notices
-and corresponding source obligations. Third-party components retain their own
-licenses; this notice does not replace or restrict those licenses.
+The program is licensed under the GNU General Public License, version 3 or any
+later version. The binding text is the repository LICENSE file. Third-party
+components retain their own licenses. This notice does not replace or restrict
+those licenses.
+
+The installer publication workflow stays closed until third-party redistribution
+and Windows packaging review are recorded in packaging/release-policy.json.
+That workflow gate does not change the GPL grant.
 
 The application is not a certified or independently audited security product.
 Windows previews require the Microsoft Visual C++ x64 Redistributable and the
