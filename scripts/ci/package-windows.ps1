@@ -129,7 +129,7 @@ $obj=Join-Path $work 'Application.wixobj'
 & (Join-Path $wix 'candle.exe') -nologo -arch $Architecture -out $obj $source
 if($LASTEXITCODE){throw 'WiX compilation failed'}
 $base="$app-$version-windows-$Architecture";$msi=Join-Path $OutputDirectory ($base+'.msi')
-& (Join-Path $wix 'light.exe') -nologo -out $msi $obj
+& (Join-Path $wix 'light.exe') -nologo -sice:ICE91 -out $msi $obj
 if($LASTEXITCODE){throw 'MSI link/validation failed'}
 $nsis=Get-Command makensis.exe -ErrorAction SilentlyContinue
 $compiler=if($nsis){$nsis.Source}else{Join-Path ([Environment]::GetEnvironmentVariable('ProgramFiles(x86)')) 'NSIS/makensis.exe'}

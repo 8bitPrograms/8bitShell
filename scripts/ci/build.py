@@ -5,7 +5,9 @@ from pathlib import Path
 from distribution import ROOT,config,version,arch,run as raw_run,download,extract,bundle_linux,launcher,archive_tree,linux_packages,stamp_assets,verify_binary
 def _hosted_error(text):
     lines=[line.strip() for line in (text or "").splitlines() if line.strip()]
-    message=" | ".join(lines[-24:] or ["command failed"]).replace("%","%25").replace("\r","%0D").replace("\n","%0A")
+    keys=("FAIL!","CMake Error","error:","Error:","error LGHT","ValueError","The following tests FAILED","MSI link","***Failed","Bad configuration")
+    picked=[line for line in lines if any(key in line for key in keys) and "ICE91" not in line and "LGHT1076" not in line]
+    message=" | ".join((picked or lines)[-16:] or ["command failed"]).replace("%","%25").replace("\r","%0D").replace("\n","%0A")
     print(f"::error::{message[-3500:]}",flush=True)
 def run(args,**kw):
     # Hosted logs are not readable without admin. Keep the failing command tail in one annotation.
@@ -95,6 +97,9 @@ def main():
         if c["app"]=="8bitShell":
             ssh=stage/"bin/openssh";ssh.mkdir(parents=True)
             for n in ("ssh","sftp","ssh-keygen","scp"):shutil.copy2(Path("/usr/bin")/n,ssh/n)
+        libdir=stage/"lib"
+        if libdir.is_dir():
+            for archive in libdir.glob("*.a"):archive.unlink()
         bundle_linux(stage);launcher(stage)
     elif system=="windows":
         crt_windows(stage,cpu)

@@ -216,7 +216,9 @@ void PerformanceRegressionTest::hiddenTerminalsStopBlinkingAndReleaseCache() {
 void PerformanceRegressionTest::historyNotificationsAreBatched() {
     TerminalView terminal;
     terminal.setLogEnabled(false);
-    terminal.setWidth(640); terminal.setHeight(360);
+    // Stay on the minimum column count. A 640px viewport with a narrow CI font
+    // stores more cells than the history budget and drops the lines under test.
+    terminal.setWidth(40); terminal.setHeight(360);
     QByteArray data;
     for (int i = 0; i < 4000; ++i) data += "line\r\n";
     QSignalSpy notifications(&terminal, &TerminalView::scrollbackChanged);

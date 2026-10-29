@@ -56,6 +56,24 @@ bool safeJump(const QString& value) {
     }
     return true;
 }
+bool openSshSupportsRequiredRsaSize() {
+    // RequiredRSASize arrived in OpenSSH 9.1. Ubuntu 22.04 ships 8.9 and
+    // rejects the keyword, which would block every connection.
+    static const bool supported = [] {
+        QProcess process;
+        process.start(Platform::sshExecutable(), {QStringLiteral("-V")});
+        if (!process.waitForFinished(3000)) return false;
+        const auto banner = QString::fromLatin1(process.readAllStandardError() + process.readAllStandardOutput());
+        const int at = banner.indexOf(QStringLiteral("OpenSSH_"));
+        if (at < 0) return false;
+        const auto match = QRegularExpression(QStringLiteral(R"((\d+)\.(\d+))")).match(banner.mid(at));
+        if (!match.hasMatch()) return false;
+        const int major = match.captured(1).toInt();
+        const int minor = match.captured(2).toInt();
+        return major > 9 || (major == 9 && minor >= 1);
+    }();
+    return supported;
+}
 }
 
 bool SshSecurity::safeHost(const QString& host) {
@@ -116,7 +134,7 @@ QByteArray SshSecurity::configuration() {
     // ProxyJump subprocesses; command-line -o alone would not protect each hop.
     // Keep modern upstream crypto defaults (including new PQ KEX), removing
     // legacy families without replacing the complete, evolving algorithm list.
-    return QByteArrayLiteral(
+    QByteArray policy = QByteArrayLiteral(
         "Host *\n"
         "  StrictHostKeyChecking yes\n"
         "  HashKnownHosts yes\n"
@@ -143,13 +161,15 @@ QByteArray SshSecurity::configuration() {
         "  ConnectTimeout 10\n"
         "  ServerAliveInterval 15\n"
         "  ServerAliveCountMax 3\n"
-        "  NumberOfPasswordPrompts 3\n"
-        "  RequiredRSASize 3072\n"
+        "  NumberOfPasswordPrompts 3\n");
+    if (openSshSupportsRequiredRsaSize()) policy += "  RequiredRSASize 3072\n";
+    policy += QByteArrayLiteral(
         "  Ciphers -*cbc,3des*,arcfour*\n"
         "  MACs -*md5*,*sha1*,*96,umac-64*,hmac-sha2-256,hmac-sha2-512,umac-128@openssh.com\n"
         "  KexAlgorithms -*sha1*\n"
         "  HostKeyAlgorithms -ssh-rsa,ssh-rsa-cert-v01@openssh.com,ssh-dss*\n"
         "  PubkeyAcceptedAlgorithms -ssh-rsa,ssh-rsa-cert-v01@openssh.com,ssh-dss*\n");
+    return policy;
 }
 QString SshSecurity::configurationPath() {
     struct PrivateConfig {

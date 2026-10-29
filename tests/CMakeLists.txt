@@ -54,6 +54,13 @@ bitshell_add_core_test(password_broker_test PasswordBrokerTest.cpp)
 bitshell_add_core_test(password_auxiliary_test PasswordAuxiliaryTest.cpp)
 add_dependencies(password_broker_test bitshell_askpass)
 add_dependencies(password_auxiliary_test bitshell_askpass)
+foreach(askpass_test password_broker_test password_auxiliary_test)
+    add_custom_command(TARGET ${askpass_test} POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "$<TARGET_FILE:bitshell_askpass>"
+                "$<TARGET_FILE_DIR:${askpass_test}>/$<TARGET_FILE_NAME:bitshell_askpass>"
+        VERBATIM)
+endforeach()
 set_tests_properties(password_store_test password_broker_test password_auxiliary_test PROPERTIES TIMEOUT 90)
 if(BIT8SHELL_PUTTYGEN_EXECUTABLE)
     if(WIN32)
@@ -179,6 +186,13 @@ set_tests_properties(local_ssh_suggestions_test PROPERTIES TIMEOUT 90
 
 qt_add_executable(local_ssh_terminal_test LocalSshTerminalTest.cpp)
 add_dependencies(local_ssh_terminal_test bitshell_askpass)
+foreach(askpass_test password_ui_test local_ssh_terminal_test)
+    add_custom_command(TARGET ${askpass_test} POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "$<TARGET_FILE:bitshell_askpass>"
+                "$<TARGET_FILE_DIR:${askpass_test}>/$<TARGET_FILE_NAME:bitshell_askpass>"
+        VERBATIM)
+endforeach()
 set_target_properties(local_ssh_terminal_test PROPERTIES WIN32_EXECUTABLE FALSE)
 target_link_libraries(local_ssh_terminal_test PRIVATE Qt6::Test bitshell_terminal)
 bitshell_register_qtest(local_ssh_terminal_test)

@@ -6,7 +6,7 @@ from distribution import ROOT,config,version,run
 def collect(stage,out,cpu):
  stage=Path(stage);out=Path(out);records=[];packages={}
  for p in sorted((stage/"lib").glob("*")):
-  if not p.is_file() or p.name.startswith("libQt"):continue
+  if not p.is_file() or ".so" not in p.name or p.name.startswith("libQt"):continue
   # ldd discovers /lib paths whereas usrmerge metadata may list /usr/lib paths.
   paths=[]
   result=run(["ldconfig","-p"],capture_output=True,text=True)
