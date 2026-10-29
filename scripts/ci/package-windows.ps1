@@ -7,12 +7,24 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2
+function Get-Bit8Python {
+    if($env:BIT8_PYTHON){
+        if(Test-Path -LiteralPath $env:BIT8_PYTHON){ return (Resolve-Path -LiteralPath $env:BIT8_PYTHON).Path }
+        throw "BIT8_PYTHON does not exist: $($env:BIT8_PYTHON)"
+    }
+    $commands=@(Get-Command python.exe,python3.exe,python -All -ErrorAction SilentlyContinue)
+    foreach($command in $commands){
+        if($command.Source -and $command.Source -notmatch '\\WindowsApps\\'){ return $command.Source }
+    }
+    throw 'Python 3 was not found on PATH. Set BIT8_PYTHON to python.exe.'
+}
+$python=Get-Bit8Python
 $repo=Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $config=Get-Content -LiteralPath (Join-Path $repo 'packaging/release.json') -Raw | ConvertFrom-Json
 $app=$config.app
 $publisher=$config.publisher
 $menuGroup=$config.startMenuFolder
-$version=& python (Join-Path $PSScriptRoot 'distribution.py') version
+$version=& $python (Join-Path $PSScriptRoot 'distribution.py') version
 if($LASTEXITCODE){throw 'Could not read version'}
 $version=$version.Trim()
 $Stage=(Resolve-Path -LiteralPath $Stage).Path.TrimEnd('\')
@@ -103,7 +115,7 @@ if($GenerateOnly){Write-Output $source;return}
 $wix=Join-Path $repo 'tooling/wix3141'
 if(!(Test-Path -LiteralPath (Join-Path $wix 'candle.exe'))){
  $archive=Join-Path $repo 'tooling/wix314-binaries.zip'
- & python -c "import sys;sys.path.insert(0,sys.argv[1]);from distribution import download;download('https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip',sys.argv[2],'6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31')" $PSScriptRoot $archive
+ & $python -c "import sys;sys.path.insert(0,sys.argv[1]);from distribution import download;download('https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip',sys.argv[2],'6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31')" $PSScriptRoot $archive
  if($LASTEXITCODE){throw 'Verified WiX download failed'}
  Expand-Archive -LiteralPath $archive -DestinationPath $wix
 }

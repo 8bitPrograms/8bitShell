@@ -3,6 +3,20 @@
 import argparse,json,os,platform,shutil
 from pathlib import Path
 from distribution import ROOT,config,download,extract,run,arch,digest
+def linux_compilers():
+    if platform.system()!="Linux":return []
+    def pick(env,names):
+        chosen=os.environ.get(env)
+        if chosen:return shutil.which(chosen) or chosen
+        for name in names:
+            found=shutil.which(name)
+            if found:return found
+        return None
+    cc,cxx=pick("CC",("gcc","gcc-12")),pick("CXX",("g++","g++-12"))
+    args=[]
+    if cc:args.append(f"-DCMAKE_C_COMPILER={cc}")
+    if cxx:args.append(f"-DCMAKE_CXX_COMPILER={cxx}")
+    return args
 def build(prefix,jobs):
     c=config();v=c["qtVersion"];prefix=Path(prefix).resolve()
     modules=["qtbase","qtshadertools","qtsvg","qt5compat","qtlanguageserver","qtdeclarative","qttools"]
@@ -25,6 +39,7 @@ def build(prefix,jobs):
             if platform.system()=="Linux":args+=["-DINPUT_openssl=linked","-DFEATURE_xcb=ON","-DFEATURE_fontconfig=ON"]
         if module=="qttools":args+=["-DFEATURE_clang=OFF","-DFEATURE_assistant=OFF","-DFEATURE_designer=OFF","-DFEATURE_distancefieldgenerator=OFF"]
         if platform.system()=="Darwin":args+=[f'-DCMAKE_OSX_DEPLOYMENT_TARGET={c["macosMinimum"]}']
+        args+=linux_compilers()
         run(args);run(["cmake","--build",builddir,"--parallel",str(jobs)]);run(["cmake","--install",builddir])
         notices=prefix/"share/8bit-qt-sources"/module;notices.mkdir(parents=True,exist_ok=True)
         for p in src.glob("LICENSE*"):

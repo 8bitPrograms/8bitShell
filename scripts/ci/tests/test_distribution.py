@@ -90,7 +90,9 @@ class ReleaseContractTests(unittest.TestCase):
     for name in files:
      p=stage/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b"fixture")
     command=["powershell.exe","-NoProfile","-ExecutionPolicy","Bypass","-File",str(ROOT/"scripts/ci/package-windows.ps1"),"-Stage",str(stage),"-OutputDirectory",str(out),"-Architecture",cpu,"-GenerateOnly"]
-    env=os.environ.copy();env["PATH"]=str(Path(sys.executable).parent)+os.pathsep+env["PATH"]
+    env=os.environ.copy();env["BIT8_PYTHON"]=sys.executable
+    path_key=next(key for key in env if key.lower()=="path")
+    env[path_key]=str(Path(sys.executable).parent)+os.pathsep+env[path_key]
     result=subprocess.run(command,capture_output=True,text=True,env=env)
     self.assertEqual(result.returncode,0,result.stdout+result.stderr)
     product=ET.parse(result.stdout.strip().splitlines()[-1]).getroot().find("w:Product",ns)

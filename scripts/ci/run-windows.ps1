@@ -1,6 +1,18 @@
 [CmdletBinding()]
 param([ValidateSet('x64','arm64','x86')][string]$Architecture='x64',[switch]$SdkOnly,[switch]$BuildOnly)
 $ErrorActionPreference='Stop'
+function Get-Bit8Python {
+    if($env:BIT8_PYTHON){
+        if(Test-Path -LiteralPath $env:BIT8_PYTHON){ return (Resolve-Path -LiteralPath $env:BIT8_PYTHON).Path }
+        throw "BIT8_PYTHON does not exist: $($env:BIT8_PYTHON)"
+    }
+    $commands=@(Get-Command python.exe,python3.exe,python -All -ErrorAction SilentlyContinue)
+    foreach($command in $commands){
+        if($command.Source -and $command.Source -notmatch '\\WindowsApps\\'){ return $command.Source }
+    }
+    throw 'Python 3 was not found on PATH. Set BIT8_PYTHON to python.exe.'
+}
+$pythonExe=Get-Bit8Python
 $repo=Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $vswhere=Join-Path ([Environment]::GetEnvironmentVariable('ProgramFiles(x86)')) 'Microsoft Visual Studio/Installer/vswhere.exe'
 $vs=& $vswhere -latest -products '*' -property installationPath
@@ -16,11 +28,11 @@ $env:VSINSTALLDIR=$vs
 $sdk=Join-Path $repo "tooling/qt-sdk-$Architecture"
 Push-Location $repo
 try{
- & python scripts/ci/build-qt.py --prefix $sdk --jobs 2
+ & $pythonExe scripts/ci/build-qt.py --prefix $sdk --jobs 2
  if($LASTEXITCODE){throw 'Qt SDK build failed'}
  if($SdkOnly){return}
  $args=@('scripts/ci/build.py','--qt-root',$sdk,'--jobs','2')
  if($BuildOnly){$args+='--build-only'}
- & python @args
+ & $pythonExe @args
  if($LASTEXITCODE){throw 'Application build/test/package failed'}
 }finally{Pop-Location}
