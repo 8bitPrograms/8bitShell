@@ -14,7 +14,9 @@ def linux_compilers():
         return None
     cc,cxx=pick("CC",("gcc","gcc-12")),pick("CXX",("g++","g++-12"))
     args=[]
-    if cc:args.append(f"-DCMAKE_C_COMPILER={cc}")
+    if cc:
+        args.append(f"-DCMAKE_C_COMPILER={cc}")
+        args.append(f"-DCMAKE_ASM_COMPILER={cc}")
     if cxx:args.append(f"-DCMAKE_CXX_COMPILER={cxx}")
     return args
 def build(prefix,jobs):
@@ -25,15 +27,15 @@ def build(prefix,jobs):
     desired={"version":v,"arch":arch(),"system":platform.system(),"modules":modules,"revision":2}
     if marker.exists() and json.loads(marker.read_text())==desired:return prefix
     if prefix.exists() and any(prefix.iterdir()):raise ValueError("Incomplete or mismatched SDK: use a fresh cache key/directory")
-    prefix.mkdir(parents=True,exist_ok=True);cache=ROOT/"tooling/qt-sources";work=ROOT/"build/qt-source"
+    prefix.mkdir(parents=True,exist_ok=True);cache=(ROOT/"tooling/qt-sources").resolve();work=(ROOT/"build/qt-source").resolve();work.mkdir(parents=True,exist_ok=True)
     for module in modules:
         name=f"{module}-everywhere-src-{v}.tar.xz";url=f"https://download.qt.io/archive/qt/{v.rsplit('.',1)[0]}/{v}/submodules/{name}"
         checksum=download(url+".sha256",cache/(name+".sha256")).read_text().split()[0]
         if len(checksum)!=64:raise ValueError("Invalid official Qt checksum")
         source_archive=download(url,cache/name,checksum);src=work/(name.removesuffix(".tar.xz"))
         if not src.exists():extract(source_archive,work)
-        builddir=work/(module+"-build")
-        args=["cmake","-S",src,"-B",builddir,"-G","Ninja","-DCMAKE_BUILD_TYPE=Release","-DCMAKE_TRY_COMPILE_CONFIGURATION=Release",f"-DCMAKE_INSTALL_PREFIX={prefix}",f"-DCMAKE_PREFIX_PATH={prefix}","-DCMAKE_INSTALL_LIBDIR=lib","-DQT_BUILD_TESTS=OFF","-DQT_BUILD_EXAMPLES=OFF","-DQT_BUILD_DOCS=OFF"]
+        src=src.resolve();builddir=(work/(module+"-build")).resolve()
+        args=["cmake","-S",src,"-B",builddir,"-G","Ninja","-DCMAKE_BUILD_TYPE=Release","-DCMAKE_TRY_COMPILE_CONFIGURATION=Release",f"-DCMAKE_INSTALL_PREFIX={prefix}",f"-DCMAKE_PREFIX_PATH={prefix}","-DCMAKE_INSTALL_LIBDIR=lib","-DQT_BUILD_TESTS=OFF","-DQT_BUILD_EXAMPLES=OFF","-DQT_BUILD_DOCS=OFF","-DQT_ALLOW_SYMLINK_IN_PATHS=ON"]
         if module=="qtbase":
             args+=["-DFEATURE_testlib=ON","-DFEATURE_widgets=ON","-DFEATURE_printsupport=ON"]
             if platform.system()=="Linux":args+=["-DINPUT_openssl=linked","-DFEATURE_xcb=ON","-DFEATURE_fontconfig=ON"]

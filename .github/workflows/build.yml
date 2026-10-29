@@ -82,7 +82,22 @@ jobs:
           python -m pip install cmake==3.31.6
       - name: Validate Windows install and uninstall authoring
         if: matrix.os == 'windows'
-        run: python -m unittest discover -s scripts/ci/tests -v
+        shell: pwsh
+        run: |
+          # GitHub's pwsh turns unittest's normal stderr progress into a failed step.
+          $PSNativeCommandUseErrorActionPreference = $false
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          python -m unittest discover -s scripts/ci/tests -v *> build/win-authoring-log.txt
+          $code = $LASTEXITCODE
+          Get-Content build/win-authoring-log.txt
+          if ($code -ne 0) {
+            Get-Content build/win-authoring-log.txt -Tail 40 | ForEach-Object {
+              $line = ([string]$_) -replace '[\r\n]', ' '
+              if ($line.Length -gt 400) { $line = $line.Substring(0, 400) }
+              Write-Output "::error::$line"
+            }
+            exit $code
+          }
       - name: Windows packaging tools
         if: matrix.os == 'windows'
         shell: powershell
@@ -100,7 +115,20 @@ jobs:
         run: .\scripts\ci\run-windows.ps1 -Architecture $env:RELEASE_ARCH -SdkOnly
       - name: Build native Qt SDK on Unix
         if: matrix.os != 'windows'
-        run: python scripts/ci/build-qt.py --prefix "tooling/qt-sdk-$RELEASE_ARCH" --jobs 2
+        run: |
+          mkdir -p build
+          set +e
+          python scripts/ci/build-qt.py --prefix "tooling/qt-sdk-$RELEASE_ARCH" --jobs 2 > build/qt-sdk-log.txt 2>&1
+          code=$?
+          set -e
+          tail -n 80 build/qt-sdk-log.txt
+          if [ "$code" -ne 0 ]; then
+            tail -n 30 build/qt-sdk-log.txt | while IFS= read -r line; do
+              line=${line//$'\r'/}
+              printf '%s\n' "::error::${line:0:400}"
+            done
+            exit "$code"
+          fi
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: steps.sdk.outputs.cache-hit != 'true'
         with:
@@ -164,6 +192,8 @@ jobs:
             build/ci-*/tests/*.txt
             build/ci-*/tests/*.xml
             build/package-smoke-*
+            build/win-authoring-log.txt
+            build/qt-sdk-log.txt
           if-no-files-found: ignore
   legacy-linux:
     needs: plan
