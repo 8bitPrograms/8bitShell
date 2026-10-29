@@ -6,11 +6,11 @@ from distribution import ROOT,config,version,arch,run as raw_run,download,extrac
 def _hosted_error(text):
     lines=[line.strip() for line in (text or "").splitlines() if line.strip()]
     drop=lambda line: "ICE91" in line or "LGHT1076" in line
-    primary_keys=("FAIL!","QFAIL","Bad configuration","error LGHT","CMake Error","ValueError","Could not find the Qt","This application failed")
+    primary_keys=("FAIL!","QFAIL","Actual","Expected","Bad configuration","error LGHT","CMake Error","ValueError","Could not find the Qt","This application failed")
     summary_keys=("The following tests FAILED","MSI link","***Failed")
-    primary=[line for line in lines if any(key in line for key in primary_keys) and not drop(line)]
+    primary=[line for line in lines if (any(key in line for key in primary_keys) or "error C" in line or "error LNK" in line) and not drop(line)]
     summary=[line for line in lines if any(key in line for key in summary_keys) and not drop(line)]
-    chosen=(primary[-20:]+summary[-6:]) or lines[-12:]
+    chosen=(primary[:12]+primary[-4:]+summary[-4:]) or lines[-12:]
     message=" | ".join(chosen or ["command failed"]).replace("%","%25").replace("\r","%0D").replace("\n","%0A")
     print(f"::error::{message[-3500:]}",flush=True)
 def run(args,**kw):

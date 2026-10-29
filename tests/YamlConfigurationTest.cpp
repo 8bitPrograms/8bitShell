@@ -14,6 +14,7 @@
 #include <bitshell/core/PersonalProfile.h>
 #ifdef Q_OS_WIN
 #include <objbase.h>
+#pragma comment(lib, "ole32.lib")
 #endif
 
 using namespace bitshell::core;
@@ -174,17 +175,15 @@ private slots:
 #ifdef Q_OS_WIN
         // QFile::link uses the shell link COM API. This test process is not a GUI app.
         const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-        const auto releaseCom = qScopeGuard([com] { if (SUCCEEDED(com)) CoUninitialize(); });
-        Q_UNUSED(releaseCom);
 #endif
-        QVERIFY2(QFile::link(path(QStringLiteral("original.ini")), link),
-                 qPrintable(QStringLiteral("shortcut creation failed (%1)").arg(
+        const bool created = QFile::link(path(QStringLiteral("original.ini")), link);
 #ifdef Q_OS_WIN
-                     GetLastError()
+        const qlonglong linkError = GetLastError();
+        if (SUCCEEDED(com)) CoUninitialize();
 #else
-                     errno
+        const qlonglong linkError = errno;
 #endif
-                 )));
+        QVERIFY2(created, qPrintable(QStringLiteral("shortcut creation failed (%1)").arg(linkError)));
         {
         AppSettings linked;
 #ifdef Q_OS_WIN

@@ -5,6 +5,7 @@
 #include <QRegularExpression>
 #include <QElapsedTimer>
 #include <QByteArray>
+#include <clocale>
 #include <cstdio>
 #include <cstdlib>
 
@@ -45,6 +46,17 @@ int main(int argc, char* argv[]) {
     // OpenSSH owns this stdout pipe. There is deliberately no logging, UI,
     // command parser, shell, fallback prompt or filesystem password exchange.
     if (!secureProcess() || argc != 2) return EXIT_FAILURE;
+#if defined(Q_OS_UNIX)
+    // OpenSSH is pinned to the C locale so its prompt stays English. Qt writes
+    // a warning when that locale is not UTF-8, and that warning would surface
+    // on the session that owns this helper.
+    if (qEnvironmentVariable("LC_ALL") == QLatin1String("C")) {
+        if (::setlocale(LC_ALL, "C.UTF-8") != nullptr)
+            qputenv("LC_ALL", "C.UTF-8");
+        else if (::setlocale(LC_ALL, "en_US.UTF-8") != nullptr)
+            qputenv("LC_ALL", "en_US.UTF-8");
+    }
+#endif
     QCoreApplication app(argc, argv);
     const auto arguments = QCoreApplication::arguments();
     if (arguments.size() != 2) return EXIT_FAILURE;
