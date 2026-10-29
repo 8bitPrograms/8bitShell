@@ -36,7 +36,7 @@ jobs:
     outputs:
       native: ${{ steps.matrix.outputs.native }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { persist-credentials: false }
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with: { python-version: '3.12' }
@@ -58,7 +58,7 @@ jobs:
       RELEASE_ARCH: ${{ matrix.arch }}
       MACOSX_DEPLOYMENT_TARGET: '14.4'
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { persist-credentials: false }
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with: { python-version: '3.12' }
@@ -172,7 +172,7 @@ jobs:
           - { arch: x86, platform: linux/386, image: i386/debian:12 }
           - { arch: armv7, platform: linux/arm/v7, image: arm32v7/debian:12 }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { persist-credentials: false }
       - name: Register distribution-provided user-mode emulation
         run: |
@@ -197,7 +197,7 @@ jobs:
     timeout-minutes: 360
     env: { RELEASE_ARCH: x86 }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { persist-credentials: false }
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with: { python-version: '3.12', architecture: x64 }
@@ -215,7 +215,7 @@ jobs:
     runs-on: ubuntu-22.04
     permissions: { contents: write }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { persist-credentials: false, fetch-depth: 0 }
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with: { python-version: '3.12' }
