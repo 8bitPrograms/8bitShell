@@ -10,7 +10,7 @@
   "macosMinimum": "14.4",
   "maintainer": "8bitShell contributors",
   "description": "Terminal and remote access workspace",
-  "license": "LicenseRef-8bitShell-Pending",
+  "license": "GPL-3.0-or-later",
   "upgradeCode": "E652F7A6-9E2C-4F10-84E0-6477E13A3485",
   "iconSvg": "assets/bitshell.svg",
   "iconIco": "assets/bitshell.ico",

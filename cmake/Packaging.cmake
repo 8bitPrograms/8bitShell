@@ -29,8 +29,8 @@ else()
 endif()
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_BINARY_DIR}/PackageLicense.txt")
 
-# No guessed open-source license: the release preflight blocks publication while
-# this is unset. Local packages remain explicitly labelled evaluation builds.
+# Project license is GPL-3.0-or-later. Installer publication stays blocked while
+# the review flags in packaging/release-policy.json are false.
 file(READ "${PROJECT_SOURCE_DIR}/packaging/release-policy.json" _release_policy)
 string(JSON BIT8SHELL_LICENSE_EXPRESSION GET "${_release_policy}" licenseExpression)
 set(CPACK_RPM_PACKAGE_LICENSE "${BIT8SHELL_LICENSE_EXPRESSION} AND MIT")

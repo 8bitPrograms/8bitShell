@@ -32,14 +32,12 @@ SDK lookup: `-QtRoot`, `BIT8SHELL_QT_ROOT`, `build/tooling/qt-sdk`,
 .\build-windows.cmd -QtRoot C:/Qt/6.11.2/msvc2022_64 -Jobs 4 -Portable
 ```
 
-On the current workstation, the relocated SDK is already in
-`build/tooling/qt-sdk`. Python is available at this explicit path, even if the
-`python` command points to the Windows Store alias:
+An ignored local SDK can live in `build/tooling/qt-sdk`. If `python` points at
+the Windows Store alias, pass a real interpreter with `-PythonExecutable`.
 
 ```powershell
-$python = 'C:/Users/berry/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'
-.\build-windows.cmd -Diagnose -PythonExecutable $python
-.\build-windows.cmd -Portable -PythonExecutable $python
+.\build-windows.cmd -Diagnose -PythonExecutable <path-to-python.exe>
+.\build-windows.cmd -Portable -PythonExecutable <path-to-python.exe>
 ```
 
 The helper verifies PuTTYgen provenance, reuses optional

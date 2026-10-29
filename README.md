@@ -18,8 +18,11 @@ Cross-platform release builds, bundled runtimes, curl installation, native packa
 See [releases, installers, versioning and distro repositories](docs/RELEASING.md).
 The current naming map and rename checklist are in [branding](docs/BRANDING.md);
 **8bitShell is the selected product name; public brand clearance is still pending.**
-The project license is awaiting the owner's decision; public package publication
-is blocked until licensing and redistribution review are complete.
+Copyright (C) 2026 8bitShell contributors. 8bitShell is free software under the
+GNU General Public License, version 3 or any later version; see [LICENSE](LICENSE).
+Qt remains a separate, dynamically linked LGPL-3.0/GPL-3.0 library. yaml-cpp,
+PuTTY, and libvterm remain MIT. Installer publication stays closed until the
+third-party redistribution and Windows packaging reviews are recorded.
 
 8bitShell is a programmable remote-access terminal with a usable Linux build and a
 native Windows 11 preview. The shared Qt Quick interface combines terminals, SFTP,
