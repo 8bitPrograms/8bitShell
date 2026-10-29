@@ -94,6 +94,37 @@ struct Security {
         if (result != ERROR_SUCCESS) { error = QStringLiteral("Cannot restrict Windows file access (%1).").arg(result); return false; }
         return true;
     }
+    // A file created by QFile or an editor can be owned by Administrators even
+    // when this user just wrote it. Take ownership, then apply the private DACL.
+    bool claim(const std::wstring& native, QString& error) const {
+        HANDLE raw = nullptr;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &raw)) {
+            error = failure("OpenProcessToken"); return false;
+        }
+        Handle token(raw);
+        TOKEN_PRIVILEGES tp{};
+        tp.PrivilegeCount = 1;
+        tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        if (!LookupPrivilegeValueW(nullptr, SE_TAKE_OWNERSHIP_NAME, &tp.Privileges[0].Luid)) {
+            error = failure("LookupPrivilege"); return false;
+        }
+        TOKEN_PRIVILEGES previous{};
+        DWORD previousSize = sizeof(previous);
+        if (!AdjustTokenPrivileges(token.value, FALSE, &tp, sizeof(tp), &previous, &previousSize) || GetLastError() != ERROR_SUCCESS) {
+            error = QStringLiteral("Cannot enable ownership privilege (Windows error %1).").arg(GetLastError());
+            return false;
+        }
+        Handle writable(CreateFileW(native.c_str(), WRITE_OWNER | WRITE_DAC | READ_CONTROL | FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+        const DWORD owned = writable.valid()
+            ? SetSecurityInfo(writable.value, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, user, nullptr, nullptr, nullptr)
+            : GetLastError();
+        const bool ok = writable.valid() && owned == ERROR_SUCCESS && protect(writable.value, error) && owns(writable.value, error);
+        AdjustTokenPrivileges(token.value, FALSE, &previous, previousSize, nullptr, nullptr);
+        if (!ok && error.isEmpty()) error = QStringLiteral("Cannot take ownership of the private file (Windows error %1).").arg(owned);
+        return ok;
+    }
 };
 bool regular(HANDLE file, bool directory, bool singleLink, QString& error) {
     BY_HANDLE_FILE_INFORMATION info{};
@@ -231,14 +262,20 @@ bool PrivateFile::write(const QString& path, const QByteArray& bytes, QString& e
     Parents parents;
     if (!parents.open(path, true, error)) return false;
     const auto target = nativePath(parents.path);
+    bool replacing = false;
+    bool foreignOwner = false;
     {
         Handle existing(CreateFileW(target.c_str(), FILE_READ_ATTRIBUTES | READ_CONTROL, FILE_SHARE_READ | FILE_SHARE_WRITE,
             nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
         if (existing.valid()) {
-            if (!regular(existing.value, false, true, error) || !parents.security.owns(existing.value, error)
-                || !allowReplace(target, parents.security, error)) return false;
+            if (!regular(existing.value, false, true, error)) return false;
+            replacing = true;
+            foreignOwner = !parents.security.owns(existing.value, error);
+            if (foreignOwner) error.clear();
         } else if (GetLastError() != ERROR_FILE_NOT_FOUND) { error = failure("Inspect write destination"); return false; }
     }
+    if (foreignOwner && !parents.security.claim(target, error)) return false;
+    if (replacing && !allowReplace(target, parents.security, error)) return false;
     const auto temporary = nativePath(QFileInfo(parents.path).absolutePath() + QStringLiteral("/.bitshell-save-") + QUuid::createUuid().toString(QUuid::Id128));
     Handle output(CreateFileW(temporary.c_str(), GENERIC_WRITE | DELETE, 0, &parents.security.attributes,
         CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));

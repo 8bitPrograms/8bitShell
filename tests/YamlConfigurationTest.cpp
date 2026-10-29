@@ -52,7 +52,8 @@ private slots:
         QCOMPARE(Platform::appConfigDirectory(), path(QStringLiteral("8bitshell")));
         SessionStore sessions;
         QCOMPARE(sessions.count(), 1);
-        QVERIFY(sessions.updateSession(0, {{QStringLiteral("name"), QStringLiteral("Renamed")}}));
+        QVERIFY2(sessions.updateSession(0, {{QStringLiteral("name"), QStringLiteral("Renamed")}}),
+                 qPrintable(sessions.lastError()));
         QVERIFY(read(QStringLiteral("8bitshell/sessions.yaml")).contains("kind: 8bitshell/sessions"));
         QVERIFY(sessions.exportYaml(path(QStringLiteral("export.yaml"))));
         QVERIFY(read(QStringLiteral("export.yaml")).contains("kind: 8bitshell/sessions"));
@@ -267,7 +268,8 @@ private slots:
         QCOMPARE(read(QStringLiteral("8bitshell/settings.yaml")), c);
         write(QStringLiteral("8bitshell/settings.yaml"), "version: 1\nkind: 8bitshell/settings\nterminal:\n  fontSize: 19\n");
         QVERIFY(settings.reload()); QCOMPARE(settings.terminalFontSize(), 19.0);
-        settings.setTerminalFontSize(20); QCOMPARE(settings.terminalFontSize(), 20.0);
+        settings.setTerminalFontSize(20);
+        QVERIFY2(qFuzzyCompare(settings.terminalFontSize(), 20.0), qPrintable(settings.lastError()));
     }
     void macroExportsConflictsAndFolderAssignments() {
         MacroStore store;
