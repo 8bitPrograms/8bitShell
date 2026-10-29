@@ -191,6 +191,7 @@ jobs:
             build/ci-*/tests/*.txt
             build/ci-*/tests/*.xml
             build/package-smoke-*
+            build/package-step.log
             build/win-authoring-log.txt
             build/qt-sdk-log.txt
           if-no-files-found: ignore

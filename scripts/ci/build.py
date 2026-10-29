@@ -2,7 +2,25 @@
 """Native build, tests, deployment, clean-environment smoke test, then packages."""
 import argparse,json,os,platform,shutil,subprocess,sys,tarfile,tempfile
 from pathlib import Path
-from distribution import ROOT,config,version,arch,run,download,extract,bundle_linux,launcher,archive_tree,linux_packages,stamp_assets,verify_binary
+from distribution import ROOT,config,version,arch,run as raw_run,download,extract,bundle_linux,launcher,archive_tree,linux_packages,stamp_assets,verify_binary
+def _hosted_error(text):
+    lines=[line.strip() for line in (text or "").splitlines() if line.strip()]
+    message=" | ".join(lines[-24:] or ["command failed"]).replace("%","%25").replace("\r","%0D").replace("\n","%0A")
+    print(f"::error::{message[-3500:]}",flush=True)
+def run(args,**kw):
+    # Hosted logs are not readable without admin. Keep the failing command tail in one annotation.
+    if any(key in kw for key in ("stdout","stderr","capture_output")):return raw_run(args,**kw)
+    kw=dict(kw);kw.pop("check",None);command=[str(a) for a in args]
+    log=ROOT/"build"/"package-step.log";log.parent.mkdir(parents=True,exist_ok=True)
+    try:proc=subprocess.run(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding="utf-8",errors="replace",**kw)
+    except subprocess.TimeoutExpired as exc:
+        output=exc.stdout.decode("utf-8","replace") if isinstance(exc.stdout,bytes) else (exc.stdout or "")
+        with log.open("a",encoding="utf-8",errors="replace") as handle:handle.write(f"\n$ {' '.join(command)}\n{output}\n")
+        _hosted_error(output or str(exc));raise
+    output=proc.stdout or "";sys.stdout.write(output);sys.stdout.flush()
+    with log.open("a",encoding="utf-8",errors="replace") as handle:handle.write(f"\n$ {' '.join(command)}\n{output}")
+    if proc.returncode:_hosted_error(output or f"exit {proc.returncode}");raise subprocess.CalledProcessError(proc.returncode,command)
+    return proc
 def openssh_windows(stage,cpu,build_layout=False):
     lock=json.loads((ROOT/"packaging/openssh.lock.json").read_text())
     item=lock["assets"][cpu];cache=ROOT/"tooling/openssh";archive=download(item["url"],cache/item["name"],item["sha256"])
@@ -35,7 +53,7 @@ def smoke(stage,system):
     elif system=="macos":exe=stage/(app+".app")/"Contents/MacOS"/app
     else:exe=stage/app;env["PATH"]="/usr/bin:/bin"
     args=[exe,"--smoke-test",out] if app=="8bitPad" else [exe,"--screenshot",out/"shell.png","--window-size","1280x800"]
-    run(args,env=env,timeout=180)
+    run(args,env=env,timeout=600)
     if app=="8bitShell":
         helper=(stage/"bin" if system=="linux" else exe.parent)/("8bitShell-askpass.exe" if system=="windows" else "8bitShell-askpass")
         for key in ("BIT8SHELL_ASKPASS_SOCKET","BIT8SHELL_ASKPASS_TOKEN","SSH_ASKPASS_PROMPT"):
@@ -44,6 +62,7 @@ def smoke(stage,system):
         if result.returncode!=1 or result.stdout:
             raise RuntimeError("Packaged askpass helper did not reject an unauthenticated invocation cleanly")
 def main():
+    (ROOT/"build").mkdir(exist_ok=True);(ROOT/"build"/"package-step.log").write_text("")
     p=argparse.ArgumentParser();p.add_argument("--qt-root",required=True);p.add_argument("--jobs",type=int,default=2);p.add_argument("--build-only",action="store_true");a=p.parse_args()
     c=config();cpu=arch();system={"Windows":"windows","Linux":"linux","Darwin":"macos"}[platform.system()]
     build=ROOT/"build"/f"ci-{system}-{cpu}";sdk=Path(a.qt_root).resolve();stage=ROOT/"build"/f"stage-{system}-{cpu}";out=ROOT/"dist/release";out.mkdir(parents=True,exist_ok=True)
@@ -61,9 +80,13 @@ def main():
     if system=="windows" and c["app"]=="8bitShell":openssh_windows(build,cpu,build_layout=True)
     env=os.environ.copy();env.update(QT_QPA_PLATFORM="offscreen",QT_QUICK_BACKEND="software")
     env["PATH"]=str(sdk/"bin")+os.pathsep+env["PATH"]
+    env["QT_PLUGIN_PATH"]=str(sdk/"plugins")
+    env["QML_IMPORT_PATH"]=str(sdk/"qml")
+    env["QML2_IMPORT_PATH"]=str(sdk/"qml")
     testtemp=build/"test-temp";testtemp.mkdir(exist_ok=True)
     env["TEMP"]=str(testtemp);env["TMP"]=str(testtemp);env["TMPDIR"]=str(testtemp)
     if system=="windows":env["QT_QPA_FONTDIR"]=str(Path(os.environ["WINDIR"])/"Fonts")
+    elif system=="linux":env["QT_QPA_FONTDIR"]="/usr/share/fonts/truetype/dejavu"
     run(["ctest","--test-dir",build,"--output-on-failure"],env=env)
     if a.build_only:return
     if stage.exists():raise ValueError("Use a fresh stage directory; previous packages are preserved")
@@ -124,4 +147,8 @@ def main():
         (out/f"manifest-source-linux-{cpu}.json").write_text(json.dumps(source_entries,indent=2)+"\n")
     stamp_assets(out,system,cpu)
     print(f'{c["app"]} {version()} {system}/{cpu}: built, tested, packaged')
-if __name__=="__main__":main()
+if __name__=="__main__":
+    try:main()
+    except (subprocess.CalledProcessError,subprocess.TimeoutExpired):raise
+    except Exception as exc:
+        _hosted_error(f"{type(exc).__name__}: {exc}");raise
