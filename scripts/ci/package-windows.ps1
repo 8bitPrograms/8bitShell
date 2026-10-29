@@ -27,7 +27,13 @@ $menuGroup=$config.startMenuFolder
 $version=& $python (Join-Path $PSScriptRoot 'distribution.py') version
 if($LASTEXITCODE){throw 'Could not read version'}
 $version=$version.Trim()
-$Stage=(Resolve-Path -LiteralPath $Stage).Path.TrimEnd('\')
+$Stage=[IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Stage).Path).TrimEnd('\')
+function To-StageRelative([string]$full){
+    $base=$Stage+'\'
+    $path=[IO.Path]::GetFullPath($full)
+    if(-not $path.StartsWith($base,[StringComparison]::OrdinalIgnoreCase)){throw "Path is outside the stage: $path"}
+    return $path.Substring($base.Length)
+}
 $OutputDirectory=if([IO.Path]::IsPathRooted($OutputDirectory)){[IO.Path]::GetFullPath($OutputDirectory)}else{[IO.Path]::GetFullPath((Join-Path $repo $OutputDirectory))}
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $stream=[IO.File]::OpenRead((Join-Path $Stage "bin/$app.exe"));$reader=New-Object IO.BinaryReader($stream)
@@ -72,7 +78,7 @@ $lines.Add(('<Directory Id="TARGETDIR" Name="SourceDir"><Directory Id="LocalAppD
 $dirs=@{''='INSTALLDIR'}
 foreach($d in Get-ChildItem -LiteralPath $Stage -Recurse -Directory | Sort-Object { $_.FullName.Length }){
  if(($d.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Links are not allowed in Windows payload'}
- $rel=$d.FullName.Substring($Stage.Length+1);$dirs[$rel]='d'+(Hash $rel).Substring(0,24)
+ $rel=To-StageRelative $d.FullName;$dirs[$rel]='d'+(Hash $rel).Substring(0,24)
 }
 $lines.Add('</Directory></Directory></Directory><Directory Id="ProgramMenuFolder"><Directory Id="MenuDir" Name="'+(Xml $menuGroup)+'"/></Directory></Directory>')
 foreach($rel in $dirs.Keys | Where-Object {$_} | Sort-Object Length){
@@ -80,7 +86,7 @@ foreach($rel in $dirs.Keys | Where-Object {$_} | Sort-Object Length){
  $lines.Add(('<DirectoryRef Id="{0}"><Directory Id="{1}" Name="{2}"/></DirectoryRef>' -f $dirs[$parent],$dirs[$rel],(Xml $name)))
 }
 foreach($f in Get-ChildItem -LiteralPath $Stage -Recurse -File | Sort-Object FullName){
- $rel=$f.FullName.Substring($Stage.Length+1)
+ $rel=To-StageRelative $f.FullName
  if($rel -match '^(?i:profile)(\\|$)' -or $f.Name -like 'Start-Portable*'){continue}
  if(($f.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw "Payload contains a link: $rel"}
  $id='c'+(Hash $rel).Substring(0,24);$components.Add($id)
