@@ -5,12 +5,16 @@
 #include <QSettings>
 #include <QUrl>
 #include <QScopeGuard>
+#include <cerrno>
 #include <bitshell/core/YamlFile.h>
 #include <bitshell/core/AppSettings.h>
 #include <bitshell/core/MacroStore.h>
 #include <bitshell/core/SessionStore.h>
 #include <bitshell/core/Platform.h>
 #include <bitshell/core/PersonalProfile.h>
+#ifdef Q_OS_WIN
+#include <objbase.h>
+#endif
 
 using namespace bitshell::core;
 
@@ -167,7 +171,20 @@ private slots:
 #else
         const auto link = path(QStringLiteral("8bitshell/settings.ini"));
 #endif
-        QVERIFY(QFile::link(path(QStringLiteral("original.ini")), link));
+#ifdef Q_OS_WIN
+        // QFile::link uses the shell link COM API. This test process is not a GUI app.
+        const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        const auto releaseCom = qScopeGuard([com] { if (SUCCEEDED(com)) CoUninitialize(); });
+        Q_UNUSED(releaseCom);
+#endif
+        QVERIFY2(QFile::link(path(QStringLiteral("original.ini")), link),
+                 qPrintable(QStringLiteral("shortcut creation failed (%1)").arg(
+#ifdef Q_OS_WIN
+                     GetLastError()
+#else
+                     errno
+#endif
+                 )));
         {
         AppSettings linked;
 #ifdef Q_OS_WIN

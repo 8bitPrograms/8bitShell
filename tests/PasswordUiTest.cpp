@@ -338,8 +338,10 @@ void PasswordUiTest::localSuggestionsDescribePasswordAuthenticationWithoutConnec
     profile[QStringLiteral("name")] = QStringLiteral("Password test account");
     profile[QStringLiteral("authenticationMode")] = QStringLiteral("password");
     QCOMPARE(m_sessions->addSession(profile), 0);
+    QTRY_VERIFY2(named(QStringLiteral("localSshSuggestions")),
+                 qPrintable(m_warnings.isEmpty() ? QStringLiteral("localSshSuggestions was not created")
+                                                 : m_warnings.join(u'\n')));
     auto* suggestions = named(QStringLiteral("localSshSuggestions"));
-    QVERIFY(suggestions);
     const auto command = fixtureCommand();
     QStringList arguments;
     for (const auto& argument : command.mid(1)) arguments.append(argument.toString());

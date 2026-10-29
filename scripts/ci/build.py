@@ -5,9 +5,13 @@ from pathlib import Path
 from distribution import ROOT,config,version,arch,run as raw_run,download,extract,bundle_linux,launcher,archive_tree,linux_packages,stamp_assets,verify_binary
 def _hosted_error(text):
     lines=[line.strip() for line in (text or "").splitlines() if line.strip()]
-    keys=("FAIL!","CMake Error","error:","Error:","error LGHT","ValueError","The following tests FAILED","MSI link","***Failed","Bad configuration")
-    picked=[line for line in lines if any(key in line for key in keys) and "ICE91" not in line and "LGHT1076" not in line]
-    message=" | ".join((picked or lines)[-16:] or ["command failed"]).replace("%","%25").replace("\r","%0D").replace("\n","%0A")
+    drop=lambda line: "ICE91" in line or "LGHT1076" in line
+    primary_keys=("FAIL!","QFAIL","Bad configuration","error LGHT","CMake Error","ValueError","Could not find the Qt","This application failed")
+    summary_keys=("The following tests FAILED","MSI link","***Failed")
+    primary=[line for line in lines if any(key in line for key in primary_keys) and not drop(line)]
+    summary=[line for line in lines if any(key in line for key in summary_keys) and not drop(line)]
+    chosen=(primary[-20:]+summary[-6:]) or lines[-12:]
+    message=" | ".join(chosen or ["command failed"]).replace("%","%25").replace("\r","%0D").replace("\n","%0A")
     print(f"::error::{message[-3500:]}",flush=True)
 def run(args,**kw):
     # Hosted logs are not readable without admin. Keep the failing command tail in one annotation.
@@ -100,6 +104,9 @@ def main():
         libdir=stage/"lib"
         if libdir.is_dir():
             for archive in libdir.glob("*.a"):archive.unlink()
+        platforms=stage/"plugins/platforms";platforms.mkdir(parents=True,exist_ok=True)
+        offscreen=sdk/"plugins/platforms"/"libqoffscreen.so"
+        if offscreen.is_file():shutil.copy2(offscreen,platforms/offscreen.name)
         bundle_linux(stage);launcher(stage)
     elif system=="windows":
         crt_windows(stage,cpu)

@@ -106,6 +106,7 @@ $components.Add('UserCommandPath')
 $lines.Add(('<DirectoryRef Id="INSTALLDIR"><Component Id="UserCommandPath" Guid="{0}" Win64="{1}"><Environment Id="UserCommandPathValue" Name="PATH" Action="set" Part="last" System="no" Permanent="no" Value="[INSTALLDIR]bin"/><RegistryValue Root="HKCU" Key="Software\{2}\Installer" Name="UserCommandPath" Type="integer" Value="1" KeyPath="yes"/></Component></DirectoryRef>' -f (GuidFor 'user-command-path'),$win64,$app))
 $systemFolder=if($Architecture -eq 'x86'){'SystemFolder'}else{'System64Folder'}
 $lines.Add(('<DirectoryRef Id="MenuDir"><Component Id="StartMenu" Guid="{0}" Win64="{1}"><Shortcut Id="AppShortcut" Name="{2}" Target="[#APP_EXE]" WorkingDirectory="INSTALLDIR" Icon="AppIcon"/><Shortcut Id="UninstallShortcut" Name="Uninstall {2}" Description="Remove {2}; keep settings and saved work" Target="[{3}]msiexec.exe" Arguments="/x [ProductCode]" WorkingDirectory="{3}" Icon="AppIcon"/>' -f (GuidFor 'shortcut'),$win64,$app,$systemFolder))
+$lines.Add('<RemoveFolder Id="RemoveLocalPrograms" Directory="Programs" On="uninstall"/>')
 # Remove only empty owned directories. The shared Start Menu folder remains
 # while the sibling application still has shortcuts in it.
 foreach($rel in $dirs.Keys){

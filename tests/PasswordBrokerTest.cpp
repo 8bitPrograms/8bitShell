@@ -56,11 +56,13 @@ private slots:
         QProcess first;
         startHelper(first, *additions, prompt(values));
         QTRY_COMPARE_WITH_TIMEOUT(first.state(), QProcess::NotRunning, 10000);
-        QCOMPARE(first.exitStatus(), QProcess::NormalExit);
-        QCOMPARE(first.exitCode(), 0);
-        QVERIFY(first.readAllStandardError().isEmpty());
+        const auto helperError = first.readAllStandardError();
+        QVERIFY2(first.exitStatus() == QProcess::NormalExit && first.exitCode() == 0,
+                 qPrintable(QStringLiteral("status %1 code %2 stderr %3")
+                     .arg(int(first.exitStatus())).arg(first.exitCode()).arg(QString::fromUtf8(helperError))));
+        QVERIFY2(helperError.isEmpty(), helperError.constData());
         auto result = first.readAllStandardOutput();
-        QVERIFY(result == fixtureSecret + '\n');
+        QCOMPARE(result, fixtureSecret + '\n');
         result.fill('\0');
 
         QProcess replay;
