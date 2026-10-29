@@ -19,6 +19,19 @@ Dialog {
     property string formError: ""
     property string selectedIdentityKey: ""
     property bool externalIdentityOpen: false
+    property string selectedAuthenticationMode: "auto"
+    property string editSessionId: ""
+    property bool hasStoredPassword: false
+    property bool removeStoredPassword: false
+    readonly property var passwordInfo: {
+        const revision = SessionStore.revision
+        return SessionStore.passwordStatus({id: editSessionId, host: hostField.text.trim(),
+            user: userField.text.trim(), port: Number(portField.text), group: groupField.text.trim(),
+            authenticationMode: "password", proxyJump: proxyJumpField.text.trim(),
+            connection: connectionChoice.toSelection()})
+    }
+    readonly property bool canRememberPassword: Boolean(passwordInfo.eligible && passwordInfo.available)
+    onCanRememberPasswordChanged: if (!canRememberPassword) rememberPasswordCheck.checked = false
     readonly property var identityOptions: {
         const rows = [
             {text: "Use application default", value: ""},
@@ -59,6 +72,12 @@ Dialog {
 
     function openCreate(folder) {
         editIndex = -1
+        editSessionId = ""
+        selectedAuthenticationMode = "auto"
+        passwordField.text = ""
+        hasStoredPassword = false
+        removeStoredPassword = false
+        rememberPasswordCheck.checked = false
         nameField.text = ""
         groupField.text = folder || ""
         hostField.text = ""
@@ -84,6 +103,10 @@ Dialog {
         if (!profile || !profile.host)
             return
         editIndex = index
+        editSessionId = profile.id || ""
+        selectedAuthenticationMode = profile.authenticationMode || "auto"
+        passwordField.text = ""
+        removeStoredPassword = false
         nameField.text = profile.name || ""
         groupField.text = profile.group || ""
         hostField.text = profile.host || ""
@@ -99,9 +122,27 @@ Dialog {
         compressionCheck.checked = Boolean(profile.compression)
         backspaceCombo.currentIndex = backspaceIndex(profile.backspaceMode || "default")
         connectionChoice.load(profile.connection || {mode: "direct"})
+        hasStoredPassword = SessionStore.passwordStatus(profile).stored
+        rememberPasswordCheck.checked = hasStoredPassword
         formError = ""
         open()
         nameField.forceActiveFocus()
+    }
+
+    function openCreateTarget(profile) {
+        openCreate("")
+        if (!profile || !profile.host) return
+        nameField.text = profile.host
+        hostField.text = profile.host
+        userField.text = profile.user || ""
+        portField.text = String(profile.port || 22)
+        identityField.text = profile.identityFile || ""
+        externalIdentityOpen = identityField.text.length > 0
+        proxyJumpField.text = profile.proxyJump || ""
+        x11Check.checked = Boolean(profile.forwardX11)
+        compressionCheck.checked = Boolean(profile.compression)
+        nameField.forceActiveFocus()
+        nameField.selectAll()
     }
 
     function saveSession() {
@@ -122,6 +163,7 @@ Dialog {
                               .map(function(value) { return value.trim() })
                               .filter(function(value) { return value.length > 0 })
         const values = {
+            id: root.editSessionId,
             name: nameField.text.trim().length > 0 ? nameField.text.trim() : host,
             group: groupField.text.trim(),
             host: host,
@@ -134,20 +176,37 @@ Dialog {
             forwardX11: x11Check.checked,
             agentForwarding: agentCheck.checked,
             compression: compressionCheck.checked
+            , authenticationMode: root.selectedAuthenticationMode
             , backspaceMode: backspaceCombo.currentValue || "default"
             , connection: connectionChoice.toSelection()
         }
 
-        const index = editIndex < 0
-                      ? SessionStore.addSession(JSON.parse(JSON.stringify(values)))
-                      : SessionStore.updateSession(editIndex, JSON.parse(JSON.stringify(values))) ? editIndex : -1
+        let passwordAction = root.removeStoredPassword || root.selectedAuthenticationMode !== "password" ? "remove" : "keep"
+        if (root.selectedAuthenticationMode === "password" && rememberPasswordCheck.checked
+                && root.canRememberPassword && passwordField.text.length > 0) passwordAction = "replace"
+        const index = SessionStore.saveSessionWithPassword(editIndex, JSON.parse(JSON.stringify(values)),
+            passwordAction === "replace" ? passwordField.text : "", passwordAction)
         if (index < 0) {
             formError = SessionStore.lastError.length > 0
                         ? SessionStore.lastError : "Could not save the session."
             return
         }
+        editIndex = index
+        editSessionId = SessionStore.get(index).id
+        passwordField.text = ""
+        if (SessionStore.lastError.length > 0) {
+            formError = SessionStore.lastError
+            return
+        }
         close()
         sessionSaved(index)
+    }
+
+    onClosed: {
+        passwordField.text = ""
+        rememberPasswordCheck.checked = false
+        hasStoredPassword = false
+        removeStoredPassword = false
     }
 
     Overlay.modal: Rectangle { color: "#a0080b10" }
@@ -188,7 +247,7 @@ Dialog {
                     font.weight: Font.DemiBold
                 }
                 Text { textFormat: Text.PlainText;
-                    text: "Connection details only — credentials are never stored here"
+                    text: "Save connection details and optional device-protected passwords"
                     color: Theme.textMuted
                     font.family: Theme.uiFont
                     font.pixelSize: Theme.uiFontSize(9)
@@ -235,6 +294,7 @@ Dialog {
                     }
                     AppTextField {
                         id: nameField
+                        objectName: "sessionNameField"
                         Layout.fillWidth: true
                         placeholderText: "Production database"
                     }
@@ -328,6 +388,7 @@ Dialog {
                 }
                 AppTextField {
                     id: userField
+                    objectName: "sessionUserField"
                     Layout.fillWidth: true
                     enabled: connectionChoice.mode !== "route"
                     placeholderText: PersonalProfile.cyberArkEnabled
@@ -348,6 +409,90 @@ Dialog {
             }
 
             ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 5
+                Text {
+                    text: "AUTHENTICATION"; textFormat: Text.PlainText
+                    color: Theme.textMuted; font.family: Theme.uiFont
+                    font.pixelSize: Theme.uiFontSize(9); font.bold: true
+                }
+                AppComboBox {
+                    id: authenticationCombo
+                    objectName: "sessionAuthenticationCombo"
+                    Layout.fillWidth: true
+                    model: [{text: "Automatic / SSH key", value: "auto"}, {text: "Password", value: "password"}]
+                    textRole: "text"; valueRole: "value"
+                    currentIndex: root.selectedAuthenticationMode === "password" ? 1 : 0
+                    onActivated: {
+                        root.selectedAuthenticationMode = currentValue
+                        if (currentValue !== "password") passwordField.text = ""
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: root.selectedAuthenticationMode === "password"
+                spacing: 6
+                CheckBox {
+                    id: rememberPasswordCheck
+                    objectName: "sessionRememberPasswordCheck"
+                    text: "Remember password on this device"
+                    enabled: root.canRememberPassword
+                    onToggled: if (!checked) {
+                        passwordField.text = ""
+                        root.removeStoredPassword = root.hasStoredPassword
+                    }
+                }
+                AppTextField {
+                    id: passwordField
+                    objectName: "sessionPasswordField"
+                    Layout.fillWidth: true
+                    enabled: rememberPasswordCheck.checked && root.canRememberPassword
+                    echoMode: TextInput.Password
+                    inputMethodHints: Qt.ImhHiddenText | Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
+                    maximumLength: 4096
+                    placeholderText: root.passwordInfo.stored && !root.removeStoredPassword
+                                     ? "Saved on this device — leave blank to keep"
+                                     : "Password to remember"
+                    Accessible.name: "SSH password to save on this device"
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        objectName: "sessionPasswordStatus"
+                        Layout.fillWidth: true
+                        text: root.removeStoredPassword ? "The saved password will be removed when you save."
+                            : root.passwordInfo.reason || (root.passwordInfo.stored
+                              ? "Saved password · " + root.passwordInfo.backend
+                              : "Without a saved password, SSH asks when connecting.")
+                        textFormat: Text.PlainText; wrapMode: Text.Wrap
+                        color: Theme.textMuted; font.pixelSize: Theme.uiFontSize(9)
+                    }
+                    AppButton {
+                        objectName: "sessionForgetPasswordButton"
+                        text: "Forget password"
+                        compact: true
+                        visible: root.hasStoredPassword && !root.removeStoredPassword
+                        onClicked: {
+                            root.removeStoredPassword = true
+                            passwordField.text = ""
+                            rememberPasswordCheck.checked = false
+                            rememberPasswordCheck.forceActiveFocus()
+                        }
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Passwords stay on this device and are excluded from YAML and exports. Password mode skips SSH keys."
+                    textFormat: Text.PlainText; wrapMode: Text.Wrap
+                    color: Theme.textFaint; font.pixelSize: Theme.uiFontSize(8)
+                }
+            }
+
+            ColumnLayout {
+                objectName: "sessionKeyControls"
+                visible: root.selectedAuthenticationMode === "auto"
                 Layout.fillWidth: true
                 spacing: 5
                 RowLayout {
@@ -525,16 +670,18 @@ Dialog {
 
             Text { textFormat: Text.PlainText;
                 Layout.fillWidth: true
-                text: root.editIndex < 0 ? "Saved locally as readable YAML" : "Changes apply next time you connect"
+                text: root.editIndex < 0 ? "Details in YAML · passwords stay on this device" : "Changes apply next time you connect"
                 color: Theme.textFaint
                 font.family: Theme.uiFont
                 font.pixelSize: Theme.uiFontSize(9)
             }
             AppButton {
+                objectName: "sessionCancelButton"
                 text: "Cancel"
                 onClicked: root.close()
             }
             AppButton {
+                objectName: "sessionSaveButton"
                 text: root.editIndex < 0 ? "Save session" : "Save changes"
                 iconText: "✓"
                 emphasized: true

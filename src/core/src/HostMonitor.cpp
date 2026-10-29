@@ -1,5 +1,7 @@
 #include <bitshell/core/HostMonitor.h>
 #include <bitshell/core/SshSecurity.h>
+#include <bitshell/core/PasswordBroker.h>
+#include <bitshell/core/PasswordStore.h>
 #include <QDir>
 #include <QStandardPaths>
 #include <QUrl>
@@ -20,9 +22,14 @@ HostMonitor::HostMonitor(QObject* parent) : QObject(parent) {
         m_error = (m_error + m_process.readAllStandardError()).right(4096);
     });
     connect(&m_process, &QProcess::errorOccurred, this, [this] {
+        m_passwordBroker.reset();
+        m_process.setProcessEnvironment(SshSecurity::environment());
+        m_timeout.stop();
         if (!m_stopping) { m_status = m_process.errorString(); emit changed(); }
     });
     connect(&m_process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this](int, QProcess::ExitStatus) {
+        m_passwordBroker.reset();
+        m_process.setProcessEnvironment(SshSecurity::environment());
         m_timeout.stop();
         if (!m_stopping && m_enabled) {
             m_metrics.clear();
@@ -32,7 +39,7 @@ HostMonitor::HostMonitor(QObject* parent) : QObject(parent) {
     });
     m_timeout.setSingleShot(true);
     connect(&m_timeout, &QTimer::timeout, this, [this] {
-        stop(); m_metrics.clear(); m_status = QStringLiteral("No monitoring data. Check SSH key/agent access and Linux /proc."); emit changed();
+        stop(); m_metrics.clear(); m_status = QStringLiteral("No monitoring data. Check SSH authentication and Linux /proc."); emit changed();
     });
 #ifdef Q_OS_WIN
     m_localTimer.setInterval(5000);
@@ -54,6 +61,8 @@ void HostMonitor::setProfile(const QVariantMap& value) {
 }
 void HostMonitor::stop() {
     m_stopping = true;
+    m_passwordBroker.reset();
+    m_process.setProcessEnvironment(SshSecurity::environment());
     m_timeout.stop();
 #ifdef Q_OS_WIN
     m_localTimer.stop();
@@ -110,14 +119,30 @@ void HostMonitor::start() {
 #endif
     QString program = QStringLiteral("/bin/sh");
     QStringList args{QStringLiteral("-s")};
+    auto environment = SshSecurity::environment();
     if (!host.isEmpty()) {
         const auto command = SshSecurity::command(m_profile, SshSecurity::Transport::Monitor);
         if (!command) { m_status = command.error(); return; }
-        program = command->program;
+        program = m_testTransport.isEmpty() ? command->program : m_testTransport;
         args = command->arguments;
         args << QStringLiteral("/bin/sh -s");
+        if (m_profile.value(QStringLiteral("authenticationMode")).toString() == QStringLiteral("password")) {
+            auto password = PasswordStore::read(m_profile);
+            if (!password) { m_status = password.error(); return; }
+            if (password->isEmpty()) {
+                m_status = QStringLiteral("Save a password on this device in the SSH session before enabling password-authenticated monitoring.");
+                return;
+            }
+            m_passwordBroker = std::make_unique<PasswordBroker>();
+            const auto additions = m_passwordBroker->start(m_profile, *password);
+            password->fill('\0');
+            if (!additions) { m_passwordBroker.reset(); m_status = additions.error(); return; }
+            for (const auto& key : additions->keys()) environment.insert(key, additions->value(key));
+        }
     }
-    m_process.setProcessEnvironment(SshSecurity::environment());
+    // One persistent SSH process streams samples. Authentication failure leaves
+    // monitoring stopped until the user explicitly retries; no password loop.
+    m_process.setProcessEnvironment(environment);
     m_process.start(program, args);
     m_process.write(sampleScript());
     m_process.closeWriteChannel();

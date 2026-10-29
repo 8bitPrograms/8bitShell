@@ -4,6 +4,7 @@
 #include <QByteArray>
 #include <QString>
 #include <QStringList>
+#include <QProcessEnvironment>
 
 #include <memory>
 
@@ -26,7 +27,8 @@ public:
                              int columns,
                              int rows,
                              QString* errorMessage = nullptr,
-                             const QString& workingDirectory = {});
+                             const QString& workingDirectory = {},
+                             const QProcessEnvironment& environmentOverrides = {});
     void stop();
     void resize(int columns, int rows);
     void write(QByteArray data);
@@ -34,6 +36,9 @@ public:
     void setEraseCharacter(char value);
     [[nodiscard]] char eraseCharacter() const;
     void setInteractiveShell(bool value) { m_interactiveShell = value; }
+    // A fresh token belongs to one TerminalView launch. It is never exported
+    // to child-process environments; only that shell's prompt may identify it.
+    void setShellIntegrationToken(const QString& value) { m_shellIntegrationToken = value; }
 
     [[nodiscard]] bool isRunning() const;
     [[nodiscard]] qint64 processId() const;
@@ -64,6 +69,7 @@ private:
     char m_eraseCharacter = '\x7f';
 #endif
     bool m_interactiveShell = false;
+    QString m_shellIntegrationToken;
 };
 
 } // namespace bitshell::terminal

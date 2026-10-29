@@ -36,6 +36,13 @@ def smoke(stage,system):
     else:exe=stage/app;env["PATH"]="/usr/bin:/bin"
     args=[exe,"--smoke-test",out] if app=="8bitPad" else [exe,"--screenshot",out/"shell.png","--window-size","1280x800"]
     run(args,env=env,timeout=180)
+    if app=="8bitShell":
+        helper=(stage/"bin" if system=="linux" else exe.parent)/("8bitShell-askpass.exe" if system=="windows" else "8bitShell-askpass")
+        for key in ("BIT8SHELL_ASKPASS_SOCKET","BIT8SHELL_ASKPASS_TOKEN","SSH_ASKPASS_PROMPT"):
+            env.pop(key,None)
+        result=subprocess.run([helper],env=env,capture_output=True,timeout=10)
+        if result.returncode!=1 or result.stdout:
+            raise RuntimeError("Packaged askpass helper did not reject an unauthenticated invocation cleanly")
 def main():
     p=argparse.ArgumentParser();p.add_argument("--qt-root",required=True);p.add_argument("--jobs",type=int,default=2);p.add_argument("--build-only",action="store_true");a=p.parse_args()
     c=config();cpu=arch();system={"Windows":"windows","Linux":"linux","Darwin":"macos"}[platform.system()]
@@ -79,7 +86,9 @@ def main():
         offscreen=app/"Contents/PlugIns/platforms/libqoffscreen.dylib"
         offscreen.parent.mkdir(parents=True,exist_ok=True)
         shutil.copy2(sdk/"plugins/platforms/libqoffscreen.dylib",offscreen)
-        run([sdk/"bin/macdeployqt",app,f"-executable={offscreen}"])
+        deploy=[sdk/"bin/macdeployqt",app,f"-executable={offscreen}"]
+        if c["app"]=="8bitShell":deploy+=[f"-executable={app/'Contents/MacOS/8bitShell-askpass'}"]
+        run(deploy)
         sign=os.environ.get("MACOS_SIGN_IDENTITY","-")
         run(["codesign","--force","--deep","--options","runtime","--timestamp","--entitlements",ROOT/"packaging/macos-entitlements.plist","--sign",sign,app] if sign!="-" else ["codesign","--force","--deep","--sign","-",app])
         run(["codesign","--verify","--deep","--strict",app])

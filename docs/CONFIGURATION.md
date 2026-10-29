@@ -98,6 +98,83 @@ profiles:
     workingDirectory: 'C:\work\sql'
 ```
 
+## Search and command palette
+
+Press **Ctrl+Shift+P**, or click **Search** in the title bar. Enter a host/IP,
+connection name, setting, theme or local shell name. Use Up/Down to select,
+Enter to run, Escape to return, and Tab/Shift+Tab to move between the search field,
+selected result and close button. Customize or disable the shortcut under
+**Settings → Shortcuts → Command palette**. Existing custom shortcuts are retained;
+if an older profile already uses Ctrl+Shift+P, the new binding starts unassigned.
+
+For an IP address, exact matching open tabs come first, followed by other matching
+tabs, saved SSH connections, and explicit actions to open another SSH tab or create
+a saved connection. Each tab shows its account and port so concurrent connections
+can be distinguished. Selection uses stable tab/session IDs; moving, renaming or
+closing a tab while searching cannot redirect activation to another tab. Native
+SSH destinations are tracked for the local SSH helper and simple commands entered
+at a supported integrated prompt; unknown or complex nested commands are not inferred.
+
+Examples include `192.0.2.25`, `settings appearance`, `theme solarized`, `powershell`,
+`wsl`, `sidebar`, and `cyberark`. Prefix a search with `>` to restrict it to commands,
+local launchers and themes. Available WSL distributions and custom local profiles
+appear by name; merely searching never launches a process or opens a connection.
+CyberArk routes retain their normal gateway approval before a new connection opens.
+If an exact saved connection has an unavailable route, new-connection actions
+require an explicit arrow-key or mouse selection; Enter does not silently fall
+back to direct SSH.
+
+Theme actions change the active day/night slot and respect **Separate terminal &
+UI themes**. Bonus themes remain hidden until unlocked with the version button.
+The palette includes settings sections, panel toggles, day/night appearance,
+CyberArk mode, key/route management, logging and highlighting. It stays closed
+while a security review or editor requires attention.
+
+Review dialogs keep **Cancel** initially selected. Left/Right or Tab/Shift+Tab
+move between buttons with a visible focus border; Enter or Space activates the
+focused button. Error dialogs focus their single **OK** button.
+
+## Saved SSH accounts in local terminals
+
+In a normal PowerShell or Bash prompt (including a WSL distribution using Bash),
+type `ssh host`, `ssh user@host`, or `ssh -p 2222 user@host`. Matching saved SSH
+browser entries appear beside the command. DNS names match without case and IPv6
+addresses are normalized; an explicitly typed account or port constrains the match.
+The first saved entry is selected. Use Up/Down or Tab to choose another, Enter to
+connect, or Escape to dismiss the helper and retain the ordinary command.
+
+The selected connection runs **inside that same local shell**, using its native
+OpenSSH client and known-hosts database. Saved account, port, jump host, key and
+compression settings are reused. Passwords/passphrases are entered into SSH itself;
+the suggestions contain account names and key labels, never stored passwords.
+The helper replaces the pending line only after selection and after the shell
+has confirmed a fresh prompt. It does not create a managed SSH tab or enable that
+tab's SFTP/monitoring controls.
+
+When CyberArk mode is enabled, configured routes also appear for the target.
+Choose a route explicitly to use its configured account rule and gateway. A route
+suggestion alone does not change what ordinary Enter does. Saved routed entries
+retain their required route and inherited folder account rule. Unavailable routes
+and missing keys block assisted activation; they never cause a direct fallback.
+Gateway approval and X11 consent still apply.
+
+PowerShell resolves `ssh.exe` from application paths, falling back to the packaged
+Windows client if unavailable. WSL uses the distribution's own `ssh`, which must
+be installed inside that distribution.
+The generated connection ignores native SSH config overrides so the selected saved
+profile defines the destination. Native host-key prompts remain enabled. For WSL,
+a selected Windows key is mapped with `wslpath` and copied into a private temporary
+directory with mode 0600 for the command, then removed on normal exit. Abrupt process
+or OS termination can leave that owner-only temporary directory.
+
+Prompt integration is session-only; startup files are not edited. Assistance stays
+off for running programs, password entry, nested/managed SSH sessions, alternate
+screens, scrolled history, unsupported shells and explicit command launches.
+Only a simple, single-display-line SSH command is recognized; remote commands,
+pipelines, redirects, extra SSH options, wrapped or uncertain input continue as
+ordinary terminal input. Bash needs PS0 support (4.4 or newer). Customized launchers
+that bypass the standard interactive shell bootstrap retain ordinary terminal use.
+
 ## Session format
 
 ```yaml
@@ -188,6 +265,7 @@ appearance:
   terminalTheme: xterm
   uiLightTheme: catppuccin-latte
   terminalLightTheme: xterm
+  separateTerminalTheme: false
   mode: dark
   dayStart: "07:00"
   nightStart: "19:00"
@@ -209,8 +287,13 @@ shortcuts:
 
 Fresh profiles default to Catppuccin Mocha/Latte. `blueberry` and `blueberry-light` remain
 stable compatibility IDs displayed as Blueberi and Raspberi.
-Appearance mode is `dark`, `light`, `system`, or `schedule`. UI and terminal slots remain
-independent. Other sections include `logging`, `highlighting`, `navigation`, and `macros`.
+Appearance mode is `dark`, `light`, `system`, or `schedule`. By default, the terminal
+follows the active UI theme. Enable **Separate terminal & UI themes** (YAML:
+`appearance.separateTerminalTheme: true`) to choose independent day/night terminal
+themes. Turning it off immediately applies the UI theme to both; the separate terminal
+choices remain saved for when the option is enabled again. Older profiles without this
+field also start with linked themes. Other sections include `logging`, `highlighting`,
+`navigation`, and `macros`.
 Terminal `textAntialiasing` accepts `system`, `grayscale`, or `aliased`;
 `fontHinting` accepts `default`, `none`, `vertical`, or `full`. Omitted fields retain
 defaults on loading older files, or their current values on partial import. These are
@@ -218,6 +301,41 @@ local display preferences, not transport or security options.
 Export from the app to see every setting and its value. Settings imports reject invalid
 types, out-of-range numbers, bad times, unknown keys, and conflicting shortcut assignments
 before making any change. Shortcut spelling is normalized by Qt (e.g. `Insert` may become `Ins`).
+
+## Password authentication
+
+In a saved SSH session, choose **Authentication > Password**. This explicitly
+uses SSH password authentication instead of application-default keys or an agent.
+Leave **Remember on this device** off to enter the password in the terminal on
+each connection. Remembering requires an explicit username and an effective
+direct connection, including a folder that inherits direct SSH.
+
+When remembering is enabled, enter the password in the masked field and save.
+Editing a remembered session never fills the secret back into the form: leave
+the field blank to keep it, enter a new value to replace it, or choose **Forget
+saved password** and Save. Cancel discards those form changes. Changing the
+host, port or username cannot send the previous password to the new account.
+Duplicates have their own IDs and do not inherit a saved password.
+
+Windows protects the local record with user-scoped DPAPI. macOS uses the login
+Keychain; Linux uses the desktop Secret Service through optional system libsecret.
+If the desktop keyring is unavailable or locked, saving reports an error and
+manual password authentication remains available. Portable profiles do not make
+stored credentials portable between computers, users or profile locations.
+
+Only `authenticationMode: password` is written into the session YAML. Passwords
+are never included in catalog/settings exports, search results, command arguments
+or terminal input. A packaged askpass helper returns a saved password once through
+a private local channel to OpenSSH, after its normal host-key verification.
+The helper accepts the destination's password prompt, not host-key confirmation,
+key passphrases or MFA challenges. Existing server trust requirements still apply.
+
+Saved passwords work for managed SSH, the SFTP browser, monitoring, and native
+PowerShell/Bash SSH assistance. SFTP and monitoring require a remembered password
+because their background processes cannot display an interactive prompt. WSL
+native SSH remains in the same terminal and asks for its password manually.
+Target passwords are not forwarded to CyberArk gateways or ProxyJump hosts;
+those prompts retain their separate interactive flow.
 
 ## SSH key metadata and private storage
 

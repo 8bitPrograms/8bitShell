@@ -52,12 +52,27 @@ if(QT_KNOWN_POLICY_QTP0004)
     qt_policy(SET QTP0004 NEW)
 endif()
 
+add_subdirectory(src/update)
 add_subdirectory(src/core)
 add_subdirectory(src/terminal)
+
+# Askpass returns one password through OpenSSH's private response pipe. It has
+# no QML/UI dependency and is included in every install/portable package.
+qt_add_executable(bitshell_askpass src/askpass/main.cpp)
+target_link_libraries(bitshell_askpass PRIVATE Qt6::Core Qt6::Network)
+set_target_properties(bitshell_askpass PROPERTIES OUTPUT_NAME "8bitShell-askpass"
+    WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
+if(APPLE)
+    set_target_properties(bitshell_askpass PROPERTIES INSTALL_RPATH "@executable_path/../Frameworks")
+elseif(BIT8SHELL_BUNDLE_RUNTIME AND UNIX)
+    set_target_properties(bitshell_askpass PROPERTIES INSTALL_RPATH "${_bitshell_qt_lib};$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+endif()
 
 qt_add_executable(bitshell
     src/app/main.cpp
 )
+add_dependencies(bitshell bitshell_askpass)
+target_link_libraries(bitshell PRIVATE bit8_updates)
 configure_file(cmake/Version.h.in generated/Version.h @ONLY)
 target_include_directories(bitshell PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 if(BIT8SHELL_BUNDLE_RUNTIME AND UNIX AND NOT APPLE)
@@ -82,6 +97,9 @@ qt_add_qml_module(bitshell_ui
         qml/Main.qml
         qml/Theme.qml
         qml/components/AppButton.qml
+        qml/components/AppDialogButtonBox.qml
+        qml/components/CommandPalette.qml
+        qml/components/CommandPaletteActions.qml
         qml/components/LocalLaunchButton.qml
         qml/components/LocalProfileSettings.qml
         qml/components/PanelButton.qml
@@ -118,6 +136,7 @@ qt_add_qml_module(bitshell_ui
         qml/components/SearchIcon.qml
         qml/components/SessionEditorDialog.qml
         qml/components/SettingsDrawer.qml
+        qml/components/UpdateSettings.qml
         qml/components/SftpPanel.qml
         qml/components/FilePane.qml
         qml/components/Sidebar.qml
@@ -125,6 +144,7 @@ qt_add_qml_module(bitshell_ui
         qml/components/TerminalPane.qml
         qml/components/MultiSshBar.qml
         qml/components/TerminalSession.qml
+        qml/components/LocalSshSuggestions.qml
         qml/components/TopBar.qml
 )
 
@@ -163,6 +183,9 @@ set_target_properties(bitshell PROPERTIES
 )
 if(APPLE)
     set_source_files_properties("${PROJECT_SOURCE_DIR}/assets/bitshell.icns" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    add_custom_command(TARGET bitshell POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:bitshell_askpass>" "$<TARGET_FILE_DIR:bitshell>/8bitShell-askpass"
+        VERBATIM)
     target_sources(bitshell PRIVATE "${PROJECT_SOURCE_DIR}/assets/bitshell.icns")
     set_target_properties(bitshell PROPERTIES MACOSX_BUNDLE_ICON_FILE bitshell.icns MACOSX_BUNDLE_GUI_IDENTIFIER io.github.8bitshell.App
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}" MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
@@ -214,6 +237,11 @@ install(TARGETS bitshell
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+if(APPLE)
+    install(TARGETS bitshell_askpass RUNTIME DESTINATION "8bitShell.app/Contents/MacOS")
+else()
+    install(TARGETS bitshell_askpass RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 if(BIT8SHELL_BUNDLE_RUNTIME AND UNIX AND NOT APPLE)
     configure_file(cmake/InstallBundleRpath.cmake.in generated/InstallBundleRpath.cmake @ONLY)
     install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/generated/InstallBundleRpath.cmake")

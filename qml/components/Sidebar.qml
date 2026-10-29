@@ -99,6 +99,15 @@ Rectangle {
             totalCount: node.totalCount || 0
         }
     }
+
+    // Copy the stored value, not whatever is visible after clipping.
+    function copyInspectorValue(field) {
+        if (!field || String(field.text || "").length === 0)
+            return false
+        field.selectAll()
+        field.copy()
+        return true
+    }
     readonly property int searchResultCount: {
         if (searchField.text.length === 0)
             return SessionStore.count
@@ -888,7 +897,7 @@ Rectangle {
             id: sessionInspector
             objectName: "sessionInspector"
             Layout.fillWidth: true
-            implicitHeight: 112
+            implicitHeight: 6 * Theme.uiFontSize(14) + 10
             radius: 3
             color: Theme.canvas
             border.color: Theme.borderSoft
@@ -906,27 +915,68 @@ Rectangle {
                     delegate: RowLayout {
                         required property var modelData
                         Layout.fillWidth: true
+                        Layout.preferredHeight: Theme.uiFontSize(14)
                         spacing: 6
 
                         Text {
                             textFormat: Text.PlainText
                             text: modelData.label
                             Layout.preferredWidth: 68
+                            Layout.fillHeight: true
+                            verticalAlignment: Text.AlignVCenter
                             color: Theme.textFaint
                             font.family: Theme.uiFont
                             font.pixelSize: Theme.uiFontSize(9)
                             elide: Text.ElideRight
                         }
-                        Text {
-                            textFormat: Text.PlainText
-                            text: modelData.value
+                        TextInput {
+                            id: valueField
+                            objectName: "sessionInspectorValue"
                             Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            readOnly: true
+                            selectByMouse: true
+                            persistentSelection: true
+                            activeFocusOnTab: false
+                            clip: true
+                            text: modelData.value
                             color: modelData.value.length > 0 ? Theme.text : Theme.textFaint
+                            selectionColor: Theme.accentDim
+                            selectedTextColor: Theme.text
                             font.family: Theme.uiFont
                             font.pixelSize: Theme.uiFontSize(9)
-                            elide: Text.ElideRight
+                            verticalAlignment: TextInput.AlignVCenter
+                            Accessible.name: modelData.label
+                            cursorDelegate: Component { Item { width: 0; height: 1 } }
+
+                            TapHandler {
+                                acceptedButtons: Qt.RightButton
+                                onTapped: function(eventPoint) {
+                                    if (valueField.text.length === 0)
+                                        return
+                                    valueField.forceActiveFocus()
+                                    inspectorCopyMenu.valueField = valueField
+                                    inspectorCopyMenu.popup(valueField,
+                                                            eventPoint.position.x,
+                                                            eventPoint.position.y)
+                                }
+                            }
                         }
                     }
+                }
+            }
+
+            AppMenu {
+                id: inspectorCopyMenu
+                objectName: "sessionInspectorCopyMenu"
+                property var valueField: null
+
+                AppMenuItem {
+                    objectName: "sessionInspectorCopyItem"
+                    text: "Copy"
+                    enabled: inspectorCopyMenu.valueField
+                             && String(inspectorCopyMenu.valueField.text || "").length > 0
+                    onTriggered: root.copyInspectorValue(inspectorCopyMenu.valueField)
                 }
             }
         }

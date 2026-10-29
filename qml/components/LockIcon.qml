@@ -7,6 +7,7 @@ Item {
     implicitWidth: 13
     implicitHeight: 15
     property color color: Theme.textMuted
+    property color backgroundColor: Theme.surface
     // Protocol indicator, deliberately not a green "authenticated" badge.
     readonly property string explanation: "SSH session · host key verification is required. This icon is not a live connection status; check authentication in the terminal."
     Accessible.role: Accessible.StaticText
@@ -27,7 +28,7 @@ Item {
         width: 11
         height: 8
         radius: 2
-        color: Theme.surface
+        color: root.backgroundColor
         border.width: 1
         border.color: root.color
         Rectangle {

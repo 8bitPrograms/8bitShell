@@ -87,6 +87,17 @@ ColumnLayout {
         wrapMode: Text.Wrap
     }
 
+    AppSwitch {
+        objectName: "separateTerminalThemeSwitch"
+        Layout.fillWidth: true
+        text: "Separate terminal & UI themes"
+        checked: AppSettings.separateTerminalTheme
+        onToggled: {
+            AppSettings.separateTerminalTheme = checked
+            checked = Qt.binding(function() { return AppSettings.separateTerminalTheme })
+        }
+    }
+
     GridLayout {
         Layout.fillWidth: true
         columns: 3
@@ -95,40 +106,44 @@ ColumnLayout {
         Item { Layout.preferredWidth: 64 }
         Text { textFormat: Text.PlainText; text: "DAY"; color: Theme.accent; font.pixelSize: Theme.uiFontSize(10); font.bold: true }
         Text { textFormat: Text.PlainText; text: "NIGHT"; color: Theme.accent; font.pixelSize: Theme.uiFontSize(10); font.bold: true }
-        Text { textFormat: Text.PlainText; text: "Application"; color: Theme.text; font.pixelSize: Theme.uiFontSize(10) }
+        Text { textFormat: Text.PlainText; text: AppSettings.separateTerminalTheme ? "UI" : "Theme"; color: Theme.text; font.pixelSize: Theme.uiFontSize(10) }
         ThemePicker {
             objectName: "uiLightThemeCombo"
             Layout.fillWidth: true
             Layout.minimumWidth: 80
-            model: Theme.uiThemes
+            model: Theme.selectableUiThemes(AppSettings.uiLightThemeId)
             selectedId: AppSettings.uiLightThemeId
             onChosen: function(themeId) { AppSettings.uiLightThemeId = themeId }
-            Accessible.name: "Application day theme"
+            Accessible.name: AppSettings.separateTerminalTheme ? "UI day theme" : "UI and terminal day theme"
         }
         ThemePicker {
             objectName: "uiThemeCombo"
             Layout.fillWidth: true
             Layout.minimumWidth: 80
-            model: Theme.uiThemes
+            model: Theme.selectableUiThemes(AppSettings.uiThemeId)
             selectedId: AppSettings.uiThemeId
             onChosen: function(themeId) { AppSettings.uiThemeId = themeId }
-            Accessible.name: "Application night theme"
+            Accessible.name: AppSettings.separateTerminalTheme ? "UI night theme" : "UI and terminal night theme"
         }
-        Text { textFormat: Text.PlainText; text: "Terminal"; color: Theme.text; font.pixelSize: Theme.uiFontSize(10) }
+        Text { visible: AppSettings.separateTerminalTheme; textFormat: Text.PlainText; text: "Terminal"; color: Theme.text; font.pixelSize: Theme.uiFontSize(10) }
         ThemePicker {
             objectName: "terminalLightThemeCombo"
+            visible: AppSettings.separateTerminalTheme
+            enabled: visible
             Layout.fillWidth: true
             Layout.minimumWidth: 80
-            model: Theme.terminalThemes
+            model: Theme.selectableTerminalThemes(AppSettings.terminalLightThemeId)
             selectedId: AppSettings.terminalLightThemeId
             onChosen: function(themeId) { AppSettings.terminalLightThemeId = themeId }
             Accessible.name: "Terminal day theme"
         }
         ThemePicker {
             objectName: "terminalThemeCombo"
+            visible: AppSettings.separateTerminalTheme
+            enabled: visible
             Layout.fillWidth: true
             Layout.minimumWidth: 80
-            model: Theme.terminalThemes
+            model: Theme.selectableTerminalThemes(AppSettings.terminalThemeId)
             selectedId: AppSettings.terminalThemeId
             onChosen: function(themeId) { AppSettings.terminalThemeId = themeId }
             Accessible.name: "Terminal night theme"
@@ -136,7 +151,9 @@ ColumnLayout {
     }
     Text { textFormat: Text.PlainText;
         Layout.fillWidth: true
-        text: "Each slot is independent. To keep the terminal dark, choose a dark theme in both columns. The top-bar Day / Night button switches to manual mode."
+        text: AppSettings.separateTerminalTheme
+              ? "Choose UI and terminal themes independently. To keep the terminal dark all day, use a dark terminal theme in both columns."
+              : "One theme changes the UI and terminal together. Your separate terminal choices are remembered."
         color: Theme.textMuted
         font.family: Theme.uiFont
         font.pixelSize: Theme.uiFontSize(10)

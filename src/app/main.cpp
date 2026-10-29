@@ -21,6 +21,7 @@
 #include <vector>
 #include <bitshell/core/Platform.h>
 #include "Version.h"
+#include <UpdateClient.h>
 #ifdef Q_OS_WIN
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
@@ -151,8 +152,13 @@ int main(int argc, char* argv[]) {
     // and the native Windows build.
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
+    UpdateClient updater(QStringLiteral("8bitShell"), QStringLiteral("8bitPrograms/8bitShell"),
+        QCoreApplication::applicationVersion(), QDir(bitshell::core::Platform::appConfigDirectory()).filePath(QStringLiteral("updates.ini")));
     QQmlApplicationEngine engine;
     QVariantMap initialProperties{{QStringLiteral("startupCommand"), terminalCommand}};
+    initialProperties.insert(QStringLiteral("updater"), QVariant::fromValue(&updater));
+    if (parser.isSet(directoryOption))
+        initialProperties.insert(QStringLiteral("startupDirectory"), QDir::currentPath());
     if (performanceProbe) {
         initialProperties.insert(QStringLiteral("startupTabCount"), performanceTabs);
         initialProperties.insert(QStringLiteral("performanceProbe"), true);
@@ -190,6 +196,13 @@ int main(int argc, char* argv[]) {
         [] { QCoreApplication::exit(EXIT_FAILURE); },
         Qt::QueuedConnection);
     engine.loadFromModule(QStringLiteral("BitShell"), QStringLiteral("Main"));
+    if (!engine.rootObjects().isEmpty()) {
+        auto *window = qobject_cast<QWindow *>(engine.rootObjects().first());
+        if (window) QObject::connect(&updater, &UpdateClient::closeRequested, window, [&updater, window] {
+            if (!window->close()) updater.cancelInstall();
+        });
+    }
+    if (!parser.isSet(screenshotOption) && !performanceProbe) updater.start();
 #ifdef Q_OS_WIN
     if (!engine.rootObjects().isEmpty())
         applyMergedTitleBar(qobject_cast<QWindow*>(engine.rootObjects().first()));

@@ -22,6 +22,9 @@ ApplicationWindow {
     property string startupOverlay: ""
     property string startupFilter: ""
     property var startupCommand: []
+    property string startupDirectory: ""
+    property var updater: null
+    Binding { target: Theme; property: "bonusThemesUnlocked"; value: AppSettings.bonusThemesUnlocked }
     property int startupTabCount: 1
     property bool performanceProbe: false
     function performanceSessionDiagnostics() { return terminalPane.performanceSessionDiagnostics() }
@@ -43,12 +46,95 @@ ApplicationWindow {
             routeManager: routeManager,
             folderConnectionDialog: folderConnection,
             sshKeyManager: sshKeyManager,
-            aboutDialog: aboutDialog
+            aboutDialog: aboutDialog,
+            commandPalette: commandPaletteLoader
         }
         const loader = overlays[name]
         if (!loader) return null
         loader.active = true
         return loader.item
+    }
+
+    property var paletteReturnFocus: null
+    readonly property bool commandPaletteBlocked: terminalPane.securityPromptActive
+        || (sessionEditor.item !== null && sessionEditor.item.visible)
+        || (macroManager.item !== null && macroManager.item.visible)
+        || (routeManager.item !== null && routeManager.item.visible)
+        || (folderConnection.item !== null && folderConnection.item.visible)
+        || (sshKeyManager.item !== null && sshKeyManager.item.visible)
+        || (aboutDialog.item !== null && aboutDialog.item.visible)
+
+    function openCommandPalette(initialQuery) {
+        if (commandPaletteBlocked) return
+        const palette = ensureOverlay("commandPalette")
+        if (palette.visible) { palette.close(); return }
+        paletteReturnFocus = root.activeFocusItem
+        if (settingsDrawer.item && settingsDrawer.item.visible) settingsDrawer.item.close()
+        topBar.dismissSearch()
+        palette.showPalette(initialQuery || "")
+        refreshCommandPalette()
+    }
+    function restorePaletteFocus() {
+        if (commandPaletteBlocked) return
+        if (paletteReturnFocus && paletteReturnFocus.visible && paletteReturnFocus.enabled)
+            paletteReturnFocus.forceActiveFocus()
+        else if (terminalPane.activeTerminal) terminalPane.activeTerminal.forceActiveFocus()
+        paletteReturnFocus = null
+    }
+    function refreshCommandPalette() {
+        const palette = commandPaletteLoader.item
+        if (!palette || !palette.visible) return
+        palette.results = paletteActions.search(palette.query, terminalPane.collectPaletteRows())
+    }
+    function executePaletteAction(id, query) {
+        if (commandPaletteBlocked) return
+        // IDs survive reordered tabs and catalog reloads. Revalidate at execution,
+        // after the palette has closed and before opening any other modal.
+        const action = paletteActions.search(query, terminalPane.collectPaletteRows()).find(row => row.id === id)
+        if (!action || !action.enabled) { restorePaletteFocus(); return }
+        if (action.type === "query") {
+            commandPaletteLoader.item.showPalette(action.target)
+            refreshCommandPalette()
+            return
+        }
+        if (action.type === "tab") { terminalPane.activatePaletteTab(action.target); return }
+        if (action.type === "saved") {
+            const profile = SessionStore.getById(action.target)
+            if (profile.host) terminalPane.openProfile(profile)
+            return
+        }
+        if (action.type === "connect") { terminalPane.connectTo(action.target); return }
+        if (action.type === "routeConnect") {
+            const parsed = SessionStore.parseSshTarget(query)
+            if (parsed.host) terminalPane.openProfile({host: parsed.host, port: parsed.port || 22,
+                connection: {mode: "route", route: action.target}})
+            return
+        }
+        if (action.type === "save") {
+            ensureOverlay("sessionEditorDialog").openCreateTarget(action.target ? SessionStore.parseSshTarget(action.target) : ({}))
+            return
+        }
+        if (action.type === "local") { terminalPane.newLocalProfile(action.target); return }
+        if (action.type === "settings") { ensureOverlay("settingsDrawer").openSection(action.target); return }
+        if (action.type === "routes") { ensureOverlay("routeManager").openManager(); return }
+        if (action.type === "keys") { ensureOverlay("sshKeyManager").openManager(); return }
+        if (action.type === "uiTheme") {
+            if (AppSettings.darkAppearance) AppSettings.uiThemeId = action.target
+            else AppSettings.uiLightThemeId = action.target
+        } else if (action.type === "terminalTheme") {
+            if (AppSettings.darkAppearance) AppSettings.terminalThemeId = action.target
+            else AppSettings.terminalLightThemeId = action.target
+        } else switch (action.id) {
+            case "appearance:toggle": AppSettings.toggleAppearance(); break
+            case "sidebar:toggle": AppSettings.sidebarVisible = !AppSettings.sidebarVisible; break
+            case "files:toggle": root.inspectorMode = root.inspectorMode === 1 ? 0 : 1; break
+            case "macros:toggle": AppSettings.macroBarVisible = !AppSettings.macroBarVisible; break
+            case "separate:toggle": AppSettings.separateTerminalTheme = !AppSettings.separateTerminalTheme; break
+            case "cyberark:toggle": PersonalProfile.cyberArkEnabled = !PersonalProfile.cyberArkEnabled; break
+            case "logging:toggle": AppSettings.logByDefault = !AppSettings.logByDefault; break
+            case "highlight:toggle": AppSettings.highlightByDefault = !AppSettings.highlightByDefault; break
+        }
+        restorePaletteFocus()
     }
 
     onInspectorModeChanged: {
@@ -64,7 +150,8 @@ ApplicationWindow {
     Binding {
         target: Theme
         property: "terminalThemeId"
-        value: AppSettings.effectiveTerminalThemeId
+        value: AppSettings.separateTerminalTheme
+               ? AppSettings.effectiveTerminalThemeId : Theme.activeUiTheme.id
     }
 
     onStartupFilterChanged: Qt.callLater(function() {
@@ -174,6 +261,7 @@ ApplicationWindow {
         navigationWidth: root.navigationWidth
         filesVisible: root.inspectorMode === 1
         splitCount: terminalPane.splitCount
+        onCommandPaletteRequested: root.openCommandPalette("")
         onToggleFiles: root.inspectorMode = root.inspectorMode === 1 ? 0 : 1
         onSplitCountRequested: function(count) { terminalPane.setSplitCount(count) }
         onSettingsRequested: function(section) { root.ensureOverlay("settingsDrawer").openSection(section) }
@@ -247,8 +335,10 @@ ApplicationWindow {
 
                 TerminalPane {
                     id: terminalPane
+                    commandPaletteOpen: commandPaletteLoader.item !== null && commandPaletteLoader.item.visible
                     onManageLocalProfilesRequested: root.ensureOverlay("settingsDrawer").openSection("Local profiles")
                     startupCommand: root.startupCommand
+                    startupDirectory: root.startupDirectory
                     startupTabCount: root.startupTabCount
                     performanceProbe: root.performanceProbe
                     SplitView.fillWidth: true
@@ -311,6 +401,7 @@ ApplicationWindow {
         id: settingsDrawer
         active: false
         sourceComponent: SettingsDrawer {
+            updater: root.updater
             parent: Overlay.overlay
             onRoutesRequested: root.ensureOverlay("routeManager").openManager()
             onKeysRequested: root.ensureOverlay("sshKeyManager").openManager()
@@ -322,9 +413,41 @@ ApplicationWindow {
     Loader { id: sshKeyManager; active: false; sourceComponent: SshKeyManager {} }
     Loader { id: aboutDialog; active: false; sourceComponent: AboutDialog {} }
 
+    CommandPaletteActions { id: paletteActions }
+    Loader {
+        id: commandPaletteLoader
+        objectName: "commandPaletteLoader"
+        active: false
+        sourceComponent: CommandPalette {
+            shortcutText: AppSettings.keyBindings.commandPalette || ""
+            onSearchChanged: root.refreshCommandPalette()
+            onChosen: function(id) { root.executePaletteAction(id, query) }
+            onClosed: if (!activationPending && !visible) root.restorePaletteFocus()
+        }
+    }
+    Timer { id: paletteRefresh; interval: 30; onTriggered: root.refreshCommandPalette() }
+    function schedulePaletteRefresh() { if (commandPaletteLoader.item && commandPaletteLoader.item.visible) paletteRefresh.restart() }
+    Connections { target: terminalPane; function onPaletteRevisionChanged() { root.schedulePaletteRefresh() } }
+    Connections { target: SessionStore; function onRevisionChanged() { root.schedulePaletteRefresh() } }
+    Connections { target: LocalProfileStore; function onChanged() { root.schedulePaletteRefresh() } }
+    Connections { target: PersonalProfile; function onChanged() { root.schedulePaletteRefresh() } }
+    Connections {
+        target: AppSettings
+        function onInputSettingsChanged() { root.schedulePaletteRefresh() }
+        function onAppearanceChanged() { root.schedulePaletteRefresh() }
+        function onBonusThemesChanged() { root.schedulePaletteRefresh() }
+        function onLogByDefaultChanged() { root.schedulePaletteRefresh() }
+        function onHighlightByDefaultChanged() { root.schedulePaletteRefresh() }
+    }
+    Shortcut {
+        sequence: AppSettings.keyBindings.commandPalette || ""
+        enabled: !root.commandPaletteBlocked && sequence.length > 0
+        onActivated: root.openCommandPalette("")
+    }
+
     Shortcut {
         sequence: AppSettings.keyBindings.quickConnect || ""
-        enabled: !terminalPane.securityPromptActive
+        enabled: !root.commandPaletteBlocked && (!commandPaletteLoader.item || !commandPaletteLoader.item.visible)
         onActivated: topBar.focusQuickConnect()
     }
 }

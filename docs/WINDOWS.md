@@ -1,13 +1,17 @@
 # Windows port
 
+For current local build/test commands and the self-contained portable folder, see
+[BUILDING.md](BUILDING.md).
+
 ## Local build-tool installation
 
 The supplied MSVC Qt SDK does not include a C++ compiler or Windows SDK. For a
-local build, open PowerShell as Administrator once and run:
+local build, open PowerShell as Administrator once, change to the repository
+root, and run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
-& 'C:\Users\berry\Github\8bitShell\scripts\install-windows-build-tools.ps1'
+& .\scripts\install-windows-build-tools.ps1
 ```
 
 The execution-policy setting applies only to that PowerShell window and expires
@@ -81,14 +85,14 @@ Build Tools. Use the MSVC x64 Qt SDK, including Qt Declarative, SVG and Shader
 Tools. From a normal (non-administrator) developer PowerShell:
 
 ```powershell
-.\scripts\build-windows.ps1 -QtRoot C:\Qt\6.11.2\msvc2022_64 -Package
+.\build-windows.cmd -QtRoot C:/Qt/6.11.2/msvc2022_64 -Portable
 ```
 
 The script builds, runs tests, and only packages if the tests pass. See
 [release tooling and licensing gates](RELEASING.md) for the MSI/EXE prerequisites.
-Packages are written under `dist/windows`; extract the entire portable ZIP and launch
-`bin/bitshell.exe`. Do not copy just the executable: Qt DLLs, plugins and QML
-modules are part of the application. The script does not disable security tools,
+Local portable folders are written under `dist/8bitShell-windows-x64-<timestamp>`.
+Run `Start-Portable.cmd` from the entire folder; Qt DLLs, plugins, QML modules,
+app-local MSVC runtime and the locked SSH client are part of the application. The script does not disable security tools,
 change machine-wide execution policy or request elevation.
 
 Windows release builds also carry a console-only PuTTYgen converter solely for importing
@@ -100,11 +104,9 @@ it again before staging. PuTTYgen is not an SSH transport and is never selected 
 `PATH`. The local build script creates the converter automatically; `BIT8SHELL_PUTTYGEN` or
 `-PuttygenPath` may only point to an executable produced by the same verified builder.
 
-The target PC needs Microsoft's supported **Visual C++ x64 Redistributable** and
-the Windows **OpenSSH Client** optional feature. The ZIP includes Qt, not a compiler
-installation or a third-party SSH client. MSVC runtime DLLs are deliberately not
-copied out of the developer toolchain. Install/update the signed Microsoft runtime
-through the normal approved software-deployment process if it is missing.
+The current portable flow bundles the redistributable MSVC runtime and locked
+OpenSSH client alongside Qt. The target computer does not need a developer SDK,
+compiler, or a separate SSH installation for the bundled client.
 
 Qt 6.11 uses architecture-specific repository directories. aqtinstall 3.3.0's
 legacy `install-qt` lookup does not understand that layout. Use Qt's official

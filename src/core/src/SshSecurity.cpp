@@ -77,6 +77,9 @@ bool SshSecurity::safePath(const QString& path) {
     });
 }
 QString SshSecurity::validateProfile(const QVariantMap& profile) {
+    const QString authenticationMode = profile.value(QStringLiteral("authenticationMode"), QStringLiteral("auto")).toString();
+    if (authenticationMode != QStringLiteral("auto") && authenticationMode != QStringLiteral("password"))
+        return QStringLiteral("Choose automatic or password SSH authentication.");
     if (profile.contains(QStringLiteral("connection"))) {
         const auto selection = profile.value(QStringLiteral("connection")).toMap();
         QString error;
@@ -190,7 +193,14 @@ std::expected<SshSecurity::Command, QString> SshSecurity::command(const QVariant
     if (!QFileInfo(result.program).isExecutable())
         return std::unexpected(QStringLiteral("The system OpenSSH client is not installed at %1.").arg(result.program));
     result.arguments << QStringLiteral("-F") << config;
-    if (transport != Transport::Terminal) result.arguments << QStringLiteral("-oBatchMode=yes");
+    const bool password = resolvedProfile.value(QStringLiteral("authenticationMode")) == QStringLiteral("password");
+    if (transport != Transport::Terminal)
+        result.arguments << (password ? QStringLiteral("-oBatchMode=no") : QStringLiteral("-oBatchMode=yes"));
+    if (password)
+        result.arguments << QStringLiteral("-oPreferredAuthentications=password")
+                         << QStringLiteral("-oPubkeyAuthentication=no")
+                         << QStringLiteral("-oKbdInteractiveAuthentication=no")
+                         << QStringLiteral("-oNumberOfPasswordPrompts=1");
     if (transport == Transport::Sftp)
         // Batch mode implies quiet mode unless -N follows it. Keep host-key
         // and authentication failures visible instead of just "Connection closed".
@@ -266,7 +276,9 @@ std::expected<QVariantMap, QString> SshSecurity::quickProfile(const QString& tex
 
 QProcessEnvironment SshSecurity::environment() {
     auto env = QProcessEnvironment::systemEnvironment();
-    for (const auto* name : {"SSH_ASKPASS", "SSH_ASKPASS_REQUIRE", "SSH_SK_PROVIDER", "LD_PRELOAD", "LD_LIBRARY_PATH"})
+    for (const auto* name : {"SSH_ASKPASS", "SSH_ASKPASS_REQUIRE", "SSH_ASKPASS_PROMPT",
+                            "BIT8SHELL_ASKPASS_SOCKET", "BIT8SHELL_ASKPASS_TOKEN",
+                            "SSH_SK_PROVIDER", "LD_PRELOAD", "LD_LIBRARY_PATH"})
         env.remove(QString::fromLatin1(name));
     env.insert(QStringLiteral("PATH"), Platform::trustedExecutablePath());
     return env;

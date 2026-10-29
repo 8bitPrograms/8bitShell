@@ -1,5 +1,6 @@
 #include <QtTest>
 
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QFontDatabase>
@@ -10,6 +11,7 @@
 #include <QPointF>
 #include <QQmlApplicationEngine>
 #include <QQmlIncubationController>
+#include <QQmlProperty>
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
@@ -36,6 +38,7 @@
 
 #include <memory>
 #include <algorithm>
+#include <cmath>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <thread>
@@ -52,11 +55,14 @@ public:
 private slots:
     void initTestCase();
     void optionalUiLoadsOnFirstUse();
+    void versionTapsRevealBonusThemes();
+    void linksUiAndTerminalThemesUnlessSeparated();
     void scrollbackPaddingUsesRealBlankCells();
     void panelControlsStayReachable();
     void panelsRetractUpwardsWithoutResizingTheirContents();
     void fileBrowserStateFollowsTabsAndVisibilityPersists();
     void threeDotMenusOpenAndEditActionWorks();
+    void sessionInspectorCopiesFullSessionDetails();
     void catalogBackgroundAndFolderRightClickCreateInExpectedLocation();
     void dragNearEdgeScrollsLargeCatalog();
     void dragsSessionIntoFolder();
@@ -163,6 +169,7 @@ void UiInteractionTest::writeCatalogFixture() {
 }
 
 void UiInteractionTest::initTestCase() {
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.0.0"));
     QCoreApplication::setOrganizationName(QStringLiteral("bitshell-tests"));
     QCoreApplication::setApplicationName(QStringLiteral("bitshell-ui-test"));
     QQuickStyle::setStyle(QStringLiteral("Basic"));
@@ -200,6 +207,235 @@ QObject* UiInteractionTest::namedObject(const QString& name) const {
         if (loader) loader->setProperty("active", true);
     }
     return m_window->findChild<QObject*>(name, Qt::FindChildrenRecursively);
+}
+
+void UiInteractionTest::versionTapsRevealBonusThemes() {
+    auto* settings = m_engine->singletonInstance<bitshell::core::AppSettings*>("BitShell", "AppSettings");
+    QVERIFY(settings && !settings->bonusThemesUnlocked());
+    const bool wasSeparate = settings->separateTerminalTheme();
+    settings->setSeparateTerminalTheme(true);
+    const auto restoreSeparation = qScopeGuard([&] { settings->setSeparateTerminalTheme(wasSeparate); });
+    auto* drawer = namedObject(QStringLiteral("settingsDrawer"));
+    QVERIFY(QMetaObject::invokeMethod(drawer, "openSection", Q_ARG(QVariant, QStringLiteral("Appearance"))));
+    QTRY_VERIFY(drawer->property("opened").toBool());
+    auto* version = visualItem(QStringLiteral("applicationVersionButton"));
+    auto* choices = namedObject(QStringLiteral("uiThemeCombo"));
+    QVERIFY(version && choices);
+    QVERIFY(version->property("text").toString().contains(QStringLiteral("1.0.0")));
+    const int before = choices->property("count").toInt();
+    const QString selected = settings->uiThemeId();
+    const QString oldTerminal = settings->terminalThemeId();
+    const QString oldDayUi = settings->uiLightThemeId();
+    const QString oldDayTerminal = settings->terminalLightThemeId();
+    auto* pane = namedObject(QStringLiteral("terminalPane"));
+    QObject* terminal = nullptr;
+    QTRY_VERIFY((terminal = pane->property("activeTerminal").value<QObject*>()) != nullptr);
+    // Previously saved bonus selections retain their appearance but cannot leak
+    // into any of the four pickers before the version gesture unlocks them.
+    for (const auto* id : {"blueberry", "blueberry-light", "cyberpunk-silverhand", "cyberpunk-v", "cyberpunk-k"}) {
+        const QString themeId = QString::fromLatin1(id);
+        settings->setUiThemeId(themeId);
+        settings->setUiLightThemeId(themeId);
+        settings->setTerminalThemeId(themeId);
+        settings->setTerminalLightThemeId(themeId);
+        for (const auto* name : {"uiThemeCombo", "uiLightThemeCombo", "terminalThemeCombo", "terminalLightThemeCombo"}) {
+            auto* picker = namedObject(QString::fromLatin1(name));
+            QVERIFY(picker);
+            QTRY_COMPARE(picker->property("currentIndex").toInt(), -1);
+            QVERIFY(picker->property("currentText").toString().isEmpty());
+            QCOMPARE(picker->property("count").toInt(), QByteArray(name).startsWith("ui") ? 19 : 27);
+        }
+        QCOMPARE(settings->uiThemeId(), themeId);
+        QVERIFY(!settings->bonusThemesUnlocked());
+    }
+    settings->setUiThemeId(QStringLiteral("missing-theme"));
+    settings->setTerminalThemeId(QStringLiteral("missing-theme"));
+    QTRY_COMPARE(m_window->color(), QColor(QStringLiteral("#11111b")));
+    QTRY_COMPARE(terminal->property("colorScheme").toMap().value(QStringLiteral("background")).toString(), QStringLiteral("#000000"));
+    settings->setUiThemeId(selected);
+    settings->setUiLightThemeId(oldDayUi);
+    settings->setTerminalThemeId(oldTerminal);
+    settings->setTerminalLightThemeId(oldDayTerminal);
+    for (int tap = 0; tap < 6; ++tap) clickItem(version);
+    QVERIFY(!settings->bonusThemesUnlocked());
+    QCOMPARE(choices->property("count").toInt(), before);
+    clickItem(version);
+    QTRY_VERIFY(settings->bonusThemesUnlocked());
+    QTRY_COMPARE(choices->property("count").toInt(), before + 5);
+    QCOMPARE(settings->uiThemeId(), selected);
+    QVERIFY(namedObject(QStringLiteral("bonusThemesHint"))->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(drawer, "close"));
+    QTRY_VERIFY(!drawer->property("visible").toBool());
+    QVariant activeId;
+    QVERIFY(QMetaObject::invokeMethod(pane, "tabIdAt", Q_RETURN_ARG(QVariant, activeId),
+                                     Q_ARG(QVariant, pane->property("currentIndex"))));
+    auto* activeTab = visualItem(QStringLiteral("openTab:") + activeId.toString());
+    auto* tabLabel = visualItem(QStringLiteral("openTabLabel:") + activeId.toString());
+    auto* headerBand = visualItem(QStringLiteral("headerAccentBand"));
+    auto* header = visualItem(QStringLiteral("topBar"));
+    auto* headerTitle = namedObject(QStringLiteral("headerTitle"));
+    auto* connectionSurface = namedObject(QStringLiteral("quickConnectSurface"));
+    auto* connectionField = namedObject(QStringLiteral("quickConnectField"));
+    auto* status = namedObject(QStringLiteral("terminalStatusBar"));
+    QVERIFY(activeTab);
+    QVERIFY(tabLabel);
+    QVERIFY(headerBand);
+    QVERIFY(header && headerTitle && connectionSurface && connectionField);
+    QVERIFY(status);
+    const auto luminance = [](QColor color) {
+        const auto linear = [](double channel) {
+            return channel <= 0.04045 ? channel / 12.92 : std::pow((channel + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * linear(color.redF()) + 0.7152 * linear(color.greenF()) + 0.0722 * linear(color.blueF());
+    };
+    const auto contrast = [&](QColor first, QColor second) {
+        const auto a = luminance(first), b = luminance(second);
+        return (std::max(a, b) + 0.05) / (std::min(a, b) + 0.05);
+    };
+    struct CyberpunkPalette { QString id; QString name; QString background; QString foreground; QString accent; QString secondary; };
+    for (const auto& palette : {
+             CyberpunkPalette{QStringLiteral("cyberpunk-silverhand"), QStringLiteral("Silverhand"), QStringLiteral("#0b0d16"), QStringLiteral("#e8f0f2"), QStringLiteral("#fcee0a"), QStringLiteral("#00f0ff")},
+             CyberpunkPalette{QStringLiteral("cyberpunk-v"), QStringLiteral("V"), QStringLiteral("#140d13"), QStringLiteral("#f4e4e8"), QStringLiteral("#ff4f5e"), QStringLiteral("#00f0ff")},
+             CyberpunkPalette{QStringLiteral("cyberpunk-k"), QStringLiteral("K"), QStringLiteral("#0b141b"), QStringLiteral("#e2f2f5"), QStringLiteral("#00f0ff"), QStringLiteral("#91bcff")}}) {
+        settings->setUiThemeId(palette.id);
+        settings->setTerminalThemeId(palette.id);
+        QTRY_COMPARE(choices->property("currentText").toString(), palette.name);
+        QTRY_COMPARE(m_window->property("color").value<QColor>(), QColor(palette.background));
+        QTRY_COMPARE(terminal->property("colorScheme").toMap().value(QStringLiteral("background")).toString(), palette.background);
+        const auto scheme = terminal->property("colorScheme").toMap();
+        QCOMPARE(scheme.value(QStringLiteral("foreground")).toString(), palette.foreground);
+        QCOMPARE(scheme.value(QStringLiteral("ansi")).toList().size(), 16);
+        QTRY_COMPARE(activeTab->property("color").value<QColor>(), QColor(palette.accent));
+        QCOMPARE(tabLabel->property("color").value<QColor>(), QColor(palette.background));
+        QVERIFY(headerBand->isVisible());
+        QCOMPARE(headerBand->property("color").value<QColor>(), QColor(palette.accent));
+        QCOMPARE(header->property("color").value<QColor>(), QColor(palette.accent));
+        QVERIFY(contrast(headerTitle->property("color").value<QColor>(), QColor(palette.accent)) >= 4.5);
+        QVERIFY(contrast(connectionField->property("color").value<QColor>(),
+                         connectionSurface->property("color").value<QColor>()) >= 4.5);
+        QCOMPARE(QQmlProperty(status, QStringLiteral("border.color")).read().value<QColor>(), QColor(palette.secondary));
+        // This text is a renderer fixture, not an executed command or user data.
+        // A deterministic ANSI sample also makes the three palette captures comparable.
+        auto* terminalView = qobject_cast<bitshell::terminal::TerminalView*>(terminal);
+        QVERIFY(terminalView);
+        bitshell::terminal::TerminalTestAccess::feed(*terminalView, QByteArray(
+            "\x1b[0m\x1b[2J\x1b[H"
+            "\x1b[90m# Theme preview fixture\x1b[0m\r\n\r\n"
+            "\x1b[36mPS\x1b[0m C:\\Projects\\8bitPrograms> \x1b[33mGet-ChildItem\x1b[0m\r\n\r\n"
+            "    Directory: C:\\Projects\\8bitPrograms\r\n\r\n"
+            "\x1b[90mMode       Name\x1b[0m\r\n"
+            "d-----     \x1b[34m8bitPad\x1b[0m\r\n"
+            "d-----     \x1b[34m8bitShell\x1b[0m\r\n"
+            "-a----     \x1b[32mnotes.txt\x1b[0m\r\n\r\n"
+            "\x1b[32mSuccess\x1b[0m   \x1b[33mWarning\x1b[0m   \x1b[31mError\x1b[0m   \x1b[36mInformation\x1b[0m\r\n\r\n"
+            "\x1b[36mPS\x1b[0m C:\\Projects\\8bitPrograms> "));
+        // Check a rendered band pixel too: data-only assertions can miss a layer
+        // covering the accent or a component that is not actually visible.
+        QTest::qWait(150);
+        const auto frame = m_window->grabWindow();
+        QVERIFY(!frame.isNull());
+        const auto point = headerBand->mapToScene(QPointF(headerBand->width() / 2.0, 1.0));
+        const qreal scale = qreal(frame.width()) / m_window->width();
+        QCOMPARE(frame.pixelColor(qRound(point.x() * scale), qRound(point.y() * scale)), QColor(palette.accent));
+        // Check the middle of the real toolbar too, not only its old 3px edge.
+        const auto headerPoint = header->mapToScene(QPointF(2.0, header->height() / 2.0));
+        QCOMPARE(frame.pixelColor(qRound(headerPoint.x() * scale), qRound(headerPoint.y() * scale)), QColor(palette.accent));
+        captureFrame(palette.id + QStringLiteral("-workspace.png"));
+    }
+    settings->setUiThemeId(selected);
+    settings->setTerminalThemeId(oldTerminal);
+    QVERIFY(!headerBand->isVisible());
+}
+
+void UiInteractionTest::linksUiAndTerminalThemesUnlessSeparated() {
+    auto* settings = m_engine->singletonInstance<bitshell::core::AppSettings*>("BitShell", "AppSettings");
+    QVERIFY(settings && !settings->separateTerminalTheme());
+    const auto oldUi = settings->uiThemeId();
+    const auto oldDayUi = settings->uiLightThemeId();
+    const auto oldTerminal = settings->terminalThemeId();
+    const auto oldMode = settings->appearanceMode();
+    auto* drawer = namedObject(QStringLiteral("settingsDrawer"));
+    const auto restore = qScopeGuard([&] {
+        settings->setSeparateTerminalTheme(false);
+        settings->setUiThemeId(oldUi);
+        settings->setUiLightThemeId(oldDayUi);
+        settings->setTerminalThemeId(oldTerminal);
+        settings->setAppearanceMode(oldMode);
+        QMetaObject::invokeMethod(drawer, "close");
+    });
+    settings->setAppearanceMode(QStringLiteral("dark"));
+    settings->setTerminalThemeId(QStringLiteral("dracula"));
+    QVERIFY(QMetaObject::invokeMethod(drawer, "openSection", Q_ARG(QVariant, QStringLiteral("Appearance"))));
+    QTRY_VERIFY(drawer->property("opened").toBool());
+    auto* separate = visualItem(QStringLiteral("separateTerminalThemeSwitch"));
+    auto* ui = namedObject(QStringLiteral("uiThemeCombo"));
+    auto* dayUi = namedObject(QStringLiteral("uiLightThemeCombo"));
+    auto* terminalPicker = visualItem(QStringLiteral("terminalThemeCombo"));
+    auto* terminalDayPicker = visualItem(QStringLiteral("terminalLightThemeCombo"));
+    auto* pane = namedObject(QStringLiteral("terminalPane"));
+    QVERIFY(separate && ui && dayUi && terminalPicker && terminalDayPicker && pane);
+    QObject* terminal = pane->property("activeTerminal").value<QObject*>();
+    QVERIFY(terminal);
+    const int tabCount = pane->property("tabCount").toInt();
+    const auto background = [&] {
+        return terminal->property("colorScheme").toMap().value(QStringLiteral("background")).toString();
+    };
+    const auto choose = [](QObject* picker, const char* id) {
+        return QMetaObject::invokeMethod(picker, "chosen", Q_ARG(QString, QString::fromLatin1(id)));
+    };
+    QVERIFY(!separate->property("checked").toBool());
+    QVERIFY(!terminalPicker->isVisible() && !terminalDayPicker->isVisible());
+    QVERIFY(!terminalPicker->isEnabled() && !terminalDayPicker->isEnabled());
+    QVERIFY(choose(ui, "cyberpunk-silverhand"));
+    QTRY_COMPARE(m_window->color(), QColor(QStringLiteral("#0b0d16")));
+    QTRY_COMPARE(background(), QStringLiteral("#0b0d16"));
+    QCOMPARE(terminal->property("colorScheme").toMap().value(QStringLiteral("ansi")).toList().at(3).toString(), QStringLiteral("#fcee0a"));
+    captureFrame(QStringLiteral("appearance-linked.png"));
+
+    clickItem(separate);
+    QTRY_VERIFY(settings->separateTerminalTheme());
+    QTRY_VERIFY(terminalPicker->isVisible() && terminalDayPicker->isVisible());
+    QTRY_COMPARE(background(), QStringLiteral("#282a36")); // Retained terminal choice.
+    QVERIFY(choose(terminalPicker, "nord"));
+    QTRY_COMPARE(background(), QStringLiteral("#2e3440"));
+    QCOMPARE(m_window->color(), QColor(QStringLiteral("#0b0d16")));
+    captureFrame(QStringLiteral("appearance-separated.png"));
+    QVERIFY(choose(ui, "cyberpunk-k"));
+    QTRY_COMPARE(m_window->color(), QColor(QStringLiteral("#0b141b")));
+    QCOMPARE(background(), QStringLiteral("#2e3440"));
+    bitshell::core::AppSettings reloaded;
+    QVERIFY(reloaded.separateTerminalTheme());
+    QCOMPARE(reloaded.effectiveTerminalThemeId(), QStringLiteral("nord"));
+
+    clickItem(separate);
+    QTRY_VERIFY(!settings->separateTerminalTheme());
+    QTRY_COMPARE(background(), QStringLiteral("#0b141b"));
+    QVERIFY(!terminalPicker->isVisible() && !terminalDayPicker->isVisible());
+    QCOMPARE(settings->terminalThemeId(), QStringLiteral("nord"));
+    QVERIFY(choose(dayUi, "github-light"));
+    settings->setAppearanceMode(QStringLiteral("light"));
+    QTRY_COMPARE(m_window->color(), QColor(QStringLiteral("#f6f8fa")));
+    QTRY_COMPARE(background(), QStringLiteral("#ffffff"));
+    settings->setAppearanceMode(QStringLiteral("dark"));
+    QTRY_COMPARE(background(), QStringLiteral("#0b141b"));
+    settings->setUiThemeId(QStringLiteral("missing-theme"));
+    QTRY_COMPARE(m_window->color(), QColor(QStringLiteral("#11111b")));
+    QTRY_COMPARE(background(), QStringLiteral("#1e1e2e")); // Linked public fallback.
+    QCOMPARE(pane->property("activeTerminal").value<QObject*>(), terminal);
+    QCOMPARE(pane->property("tabCount").toInt(), tabCount);
+    // An external configuration edit rejects saving. The visible toggle must
+    // still describe the active mode, rather than staying optimistically on.
+    QFile external(settings->storagePath());
+    QVERIFY(external.open(QIODevice::Append));
+    QVERIFY(external.write("\n# External edit during appearance selection\n") > 0);
+    external.close();
+    clickItem(separate);
+    QTRY_VERIFY(!settings->lastError().isEmpty());
+    QVERIFY(!settings->separateTerminalTheme());
+    QTRY_VERIFY(!separate->property("checked").toBool());
+    QVERIFY2(settings->reload(), qPrintable(settings->lastError()));
+    QVERIFY(QMetaObject::invokeMethod(drawer, "close"));
+    QTRY_VERIFY(!drawer->property("visible").toBool());
 }
 
 void UiInteractionTest::optionalUiLoadsOnFirstUse() {
@@ -593,6 +829,69 @@ void UiInteractionTest::threeDotMenusOpenAndEditActionWorks() {
     QTest::qWait(120);
 }
 
+void UiInteractionTest::sessionInspectorCopiesFullSessionDetails() {
+    auto* sidebar = namedObject(QStringLiteral("catalogSidebar"));
+    QVERIFY(sidebar);
+    const QVariantMap node{
+        {QStringLiteral("kind"), QStringLiteral("session")},
+        {QStringLiteral("key"), QStringLiteral("session:move-me")},
+        {QStringLiteral("name"), QStringLiteral("move-me")},
+        {QStringLiteral("host"), QStringLiteral("move.example.test")},
+        {QStringLiteral("user"), QStringLiteral("operator")},
+        {QStringLiteral("port"), 22},
+        {QStringLiteral("group"), QStringLiteral("00 Source/Nested")},
+    };
+    QVERIFY(QMetaObject::invokeMethod(sidebar, "inspectNode", Q_ARG(QVariant, QVariant::fromValue(node))));
+
+    auto* inspector = qobject_cast<QQuickItem*>(namedObject(QStringLiteral("sessionInspector")));
+    QVERIFY(inspector);
+    const auto values = [](QQuickItem* root) {
+        QList<QQuickItem*> fields;
+        const auto walk = [&fields](auto&& self, QQuickItem* item) -> void {
+            if (item == nullptr)
+                return;
+            if (item->objectName() == QLatin1String("sessionInspectorValue"))
+                fields.append(item);
+            for (auto* child : item->childItems())
+                self(self, child);
+        };
+        walk(walk, root);
+        return fields;
+    };
+    QList<QQuickItem*> fields;
+    QQuickItem* host = nullptr;
+    for (int attempt = 0; attempt < 50 && host == nullptr; ++attempt) {
+        if (attempt > 0)
+            QTest::qWait(20);
+        fields = values(inspector);
+        host = nullptr;
+        for (auto* field : fields) {
+            if (field->property("text").toString() == QStringLiteral("move.example.test"))
+                host = field;
+        }
+    }
+    QCOMPARE(fields.size(), 6);
+    for (auto* field : fields) {
+        QVERIFY(field->property("readOnly").toBool());
+        QVERIFY(field->property("selectByMouse").toBool());
+        QVERIFY(field->height() > 8.0);
+    }
+    QVERIFY(host);
+    QVERIFY(QMetaObject::invokeMethod(host, "select", Q_ARG(int, 0), Q_ARG(int, 4)));
+    QCOMPARE(host->property("selectedText").toString(), QStringLiteral("move"));
+
+    auto* menu = namedObject(QStringLiteral("sessionInspectorCopyMenu"));
+    QVERIFY(menu);
+    menu->setProperty("valueField", QVariant::fromValue(static_cast<QObject*>(host)));
+    auto* copyItem = menu->findChild<QObject*>(QStringLiteral("sessionInspectorCopyItem"));
+    QVERIFY(copyItem);
+    QTRY_VERIFY(copyItem->property("enabled").toBool());
+    QGuiApplication::clipboard()->setText(QStringLiteral("stale-inspector-clipboard"));
+    QVERIFY(QMetaObject::invokeMethod(copyItem, "triggered"));
+    QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("move.example.test"));
+    QCOMPARE(host->property("selectedText").toString(), QStringLiteral("move.example.test"));
+}
+
 void UiInteractionTest::catalogBackgroundAndFolderRightClickCreateInExpectedLocation() {
     auto* sidebar = qobject_cast<QQuickItem*>(namedObject(QStringLiteral("catalogSidebar")));
     auto* contextTarget = visualItem(QStringLiteral("catalogAreaContextTarget"));
@@ -801,6 +1100,9 @@ void UiInteractionTest::dragsWholeFolderTreeAndBackToRoot() {
 void UiInteractionTest::themeSwitchWorkload() {
     auto* settings = m_engine->singletonInstance<bitshell::core::AppSettings*>("BitShell", "AppSettings");
     QVERIFY(settings);
+    const bool wasSeparate = settings->separateTerminalTheme();
+    settings->setSeparateTerminalTheme(true);
+    const auto restoreSeparation = qScopeGuard([&] { settings->setSeparateTerminalTheme(wasSeparate); });
     settings->setAppearanceMode(QStringLiteral("dark"));
     settings->setUiThemeId(QStringLiteral("blueberry"));
     settings->setTerminalThemeId(QStringLiteral("blueberry"));
@@ -924,6 +1226,9 @@ void UiInteractionTest::settingsDropdownScrollingKeepsRowsVisible() {
     QFETCH(QString, paletteId);
     auto* settings = m_engine->singletonInstance<bitshell::core::AppSettings*>("BitShell", "AppSettings");
     QVERIFY(settings);
+    const bool wasSeparate = settings->separateTerminalTheme();
+    settings->setSeparateTerminalTheme(true);
+    const auto restoreSeparation = qScopeGuard([&] { settings->setSeparateTerminalTheme(wasSeparate); });
     const auto originalFont = settings->terminalFontFamily();
     const auto originalUi = settings->uiThemeId();
     const auto originalMode = settings->appearanceMode();
@@ -1119,6 +1424,11 @@ void UiInteractionTest::settingsDropdownScrollingKeepsRowsVisible() {
 }
 
 void UiInteractionTest::switchesUiAndTerminalThemesIndependently() {
+    auto* preferences = m_engine->singletonInstance<bitshell::core::AppSettings*>("BitShell", "AppSettings");
+    QVERIFY(preferences);
+    const bool wasSeparate = preferences->separateTerminalTheme();
+    preferences->setSeparateTerminalTheme(true);
+    const auto restoreSeparation = qScopeGuard([&] { preferences->setSeparateTerminalTheme(wasSeparate); });
     auto* uiTheme = qobject_cast<QQuickItem*>(namedObject(QStringLiteral("uiThemeCombo")));
     auto* terminalTheme = qobject_cast<QQuickItem*>(
         namedObject(QStringLiteral("terminalThemeCombo")));
@@ -1126,8 +1436,8 @@ void UiInteractionTest::switchesUiAndTerminalThemesIndependently() {
     QVERIFY(uiTheme != nullptr);
     QVERIFY(terminalTheme != nullptr);
     QVERIFY(pane != nullptr);
-    QCOMPARE(uiTheme->property("count").toInt(), 21);
-    QCOMPARE(terminalTheme->property("count").toInt(), 29);
+    QCOMPARE(uiTheme->property("count").toInt(), 24);
+    QCOMPARE(terminalTheme->property("count").toInt(), 32);
 
     terminalTheme->setProperty("currentIndex", 0);
     QVERIFY(QMetaObject::invokeMethod(terminalTheme, "activated", Q_ARG(int, 0)));
@@ -1170,6 +1480,11 @@ void UiInteractionTest::switchesUiAndTerminalThemesIndependently() {
 }
 
 void UiInteractionTest::switchesDayNightMatrixAndAutomaticModes() {
+    auto* preferences = m_engine->singletonInstance<bitshell::core::AppSettings*>("BitShell", "AppSettings");
+    QVERIFY(preferences);
+    const bool wasSeparate = preferences->separateTerminalTheme();
+    preferences->setSeparateTerminalTheme(true);
+    const auto restoreSeparation = qScopeGuard([&] { preferences->setSeparateTerminalTheme(wasSeparate); });
     auto* mode = namedObject(QStringLiteral("appearanceModeCombo"));
     auto* uiDay = namedObject(QStringLiteral("uiLightThemeCombo"));
     auto* terminalDay = namedObject(QStringLiteral("terminalLightThemeCombo"));
@@ -1242,7 +1557,7 @@ void UiInteractionTest::switchesDayNightMatrixAndAutomaticModes() {
     captureFrame(QStringLiteral("appearance-palette-menu.png"));
     QTest::keyClick(m_window, Qt::Key_End);
     QTest::keyClick(m_window, Qt::Key_Return);
-    QTRY_COMPARE(uiDay->property("currentValue").toString(), QStringLiteral("rose-pine-dawn"));
+    QTRY_COMPARE(uiDay->property("currentValue").toString(), QStringLiteral("cyberpunk-k"));
     QVERIFY(choose(uiDay, 18));
     QVERIFY(QMetaObject::invokeMethod(drawer, "close"));
     QTRY_VERIFY(!drawer->property("visible").toBool());

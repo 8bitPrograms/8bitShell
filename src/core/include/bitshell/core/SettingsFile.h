@@ -17,7 +17,7 @@ public:
     QString error() const { return m_error.isEmpty() ? m_file.error() : m_error; }
 private:
     bool validate(QVariantMap& values);
-    bool flatten(const QVariantMap& document, QVariantMap& values);
+    bool flatten(const QVariantMap& document, QVariantMap& values, bool restoringDefaults = false);
     static QVariantMap document(const QVariantMap& values);
     QVariantMap m_defaults;
     QVariantMap m_values;

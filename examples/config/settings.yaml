@@ -7,6 +7,7 @@ appearance:
   terminalTheme: xterm
   uiLightTheme: catppuccin-latte
   terminalLightTheme: xterm
+  separateTerminalTheme: false # Enable independent terminal day/night themes.
   mode: dark
   dayStart: "07:00"
   nightStart: "19:00"
@@ -43,5 +44,6 @@ shortcuts:
   closeTab: Ctrl+Shift+W
   nextTab: Ctrl+Tab
   quickConnect: Ctrl+K
+  commandPalette: Ctrl+Shift+P
   zoomIn: Ctrl++
   zoomOut: Ctrl+-

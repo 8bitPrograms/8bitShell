@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QElapsedTimer>
 #include <bitshell/core/SettingsFile.h>
 #include <QString>
 #include <QStringList>
@@ -11,6 +12,8 @@ namespace bitshell::core {
 
 class AppSettings : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QString applicationVersion READ applicationVersion CONSTANT)
+    Q_PROPERTY(bool bonusThemesUnlocked READ bonusThemesUnlocked NOTIFY bonusThemesChanged)
     Q_PROPERTY(QString terminalFontFamily READ terminalFontFamily WRITE setTerminalFontFamily
                    NOTIFY terminalFontFamilyChanged)
     Q_PROPERTY(qreal terminalFontSize READ terminalFontSize WRITE setTerminalFontSize NOTIFY
@@ -26,6 +29,7 @@ class AppSettings : public QObject {
                    terminalThemeIdChanged)
     Q_PROPERTY(QString uiLightThemeId READ uiLightThemeId WRITE setUiLightThemeId NOTIFY appearanceChanged)
     Q_PROPERTY(QString terminalLightThemeId READ terminalLightThemeId WRITE setTerminalLightThemeId NOTIFY appearanceChanged)
+    Q_PROPERTY(bool separateTerminalTheme READ separateTerminalTheme WRITE setSeparateTerminalTheme NOTIFY appearanceChanged)
     Q_PROPERTY(QString appearanceMode READ appearanceMode WRITE setAppearanceMode NOTIFY appearanceChanged)
     Q_PROPERTY(QString dayStart READ dayStart WRITE setDayStart NOTIFY appearanceChanged)
     Q_PROPERTY(QString nightStart READ nightStart WRITE setNightStart NOTIFY appearanceChanged)
@@ -64,6 +68,9 @@ class AppSettings : public QObject {
 
 public:
     explicit AppSettings(QObject* parent = nullptr);
+    QString applicationVersion() const;
+    bool bonusThemesUnlocked() const;
+    Q_INVOKABLE bool registerVersionTap();
 
     [[nodiscard]] QString terminalFontFamily() const;
     void setTerminalFontFamily(const QString& value);
@@ -85,6 +92,8 @@ public:
     void setUiLightThemeId(const QString& value);
     [[nodiscard]] QString terminalLightThemeId() const;
     void setTerminalLightThemeId(const QString& value);
+    [[nodiscard]] bool separateTerminalTheme() const;
+    void setSeparateTerminalTheme(bool value);
     [[nodiscard]] QString appearanceMode() const;
     void setAppearanceMode(const QString& value);
     [[nodiscard]] QString dayStart() const;
@@ -142,6 +151,7 @@ public:
     Q_INVOKABLE QString shortcutFromKey(int key, int modifiers) const;
 
 signals:
+    void bonusThemesChanged();
     void storageErrorChanged();
     void inputSettingsChanged();
     void appearanceChanged();
@@ -182,6 +192,7 @@ private:
     QString m_terminalThemeId = QStringLiteral("xterm");
     QString m_uiLightThemeId = QStringLiteral("catppuccin-latte");
     QString m_terminalLightThemeId = QStringLiteral("xterm");
+    bool m_separateTerminalTheme = false;
     QString m_appearanceMode = QStringLiteral("dark");
     QString m_dayStart = QStringLiteral("07:00");
     QString m_nightStart = QStringLiteral("19:00");
@@ -206,6 +217,8 @@ private:
     bool m_macroBarVisible = true;
     QVariantMap m_keyBindings;
     QString m_shortcutError;
+    QElapsedTimer m_versionTapTimer;
+    int m_versionTapCount = 0;
 };
 
 } // namespace bitshell::core

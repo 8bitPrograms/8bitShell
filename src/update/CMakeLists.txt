@@ -1,0 +1,6 @@
+qt_add_library(bit8_updates STATIC UpdateClient.h UpdateClient.cpp)
+target_include_directories(bit8_updates PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(bit8_updates PUBLIC Qt6::Core Qt6::Network Qt6::Gui)
+if(WIN32)
+    install(FILES Apply-Update.ps1 DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()

@@ -526,6 +526,14 @@ bool SshKeyStore::reload() {
 std::expected<QVariantMap, QString>
 SshKeyStore::applyDefaults(const QVariantMap& profile) {
     QVariantMap result = profile;
+    if (profile.value(QStringLiteral("authenticationMode")) == QStringLiteral("password")) {
+        // Password authentication is an explicit choice, including for routed
+        // sessions. Neither an application default nor a stale key reference
+        // may turn it back into public-key authentication.
+        result.remove(QStringLiteral("identityFile"));
+        result[QStringLiteral("identityKey")] = QStringLiteral("none");
+        return result;
+    }
     const QString requested = profile.value(QStringLiteral("identityKey")).toString();
     if (!requested.isEmpty() && requested != QStringLiteral("none") && !validKeyId(requested))
         return std::unexpected(QStringLiteral("The session contains an invalid SSH key reference."));

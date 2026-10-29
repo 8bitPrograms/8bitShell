@@ -50,6 +50,51 @@ private slots:
                  QStringLiteral("normal folder"), QStringLiteral("%a&b")})
             QVERIFY2(Platform::windowsFileName(name), qPrintable(name));
     }
+    void promptIntegrationIsSessionScopedAndPreservesExplicitCommands() {
+        const QString token = QStringLiteral("test-0123456789abcdef-session");
+#ifdef Q_OS_WIN
+        const QString program = QStringLiteral("C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe");
+        const auto integrated = Platform::persistentHistoryArguments(program, {QStringLiteral("-NoLogo")}, token);
+        QVERIFY(integrated.last().contains(QStringLiteral("PSConsoleHostReadLine")));
+        QVERIFY(integrated.last().contains(QStringLiteral("777;8bitshell;") + token + QStringLiteral(";powershell")));
+        for (const auto* phase : {"A", "B", "C"})
+            QVERIFY(integrated.last().contains(QStringLiteral("133;") + QString::fromLatin1(phase) + u';' + token));
+        QVERIFY(integrated.last().contains(QStringLiteral("finally")));
+        QVERIFY(!integrated.last().contains(QStringLiteral("Set-Content")));
+        QVERIFY(!integrated.last().contains(QStringLiteral("AddToHistoryHandler")));
+        for (const auto* option : {"-Command", "-co", "-CommandWithArgs", "-File", "-f", "-EncodedCommand", "-ec", "-NonInteractive"}) {
+            const QStringList explicitArgs{QString::fromLatin1(option), QStringLiteral("user supplied input")};
+            QCOMPARE(Platform::persistentHistoryArguments(program, explicitArgs, token), explicitArgs);
+        }
+        const auto malformed = Platform::persistentHistoryArguments(program, {}, QStringLiteral("invalid;token\n"));
+        QVERIFY(!malformed.last().contains(QStringLiteral("777;8bitshell")));
+        const QStringList wslArgs{QStringLiteral("--distribution"), QStringLiteral("Test Distro"),
+                                 QStringLiteral("--cd"), QStringLiteral("/home/test/projects with spaces")};
+        const auto wsl = Platform::persistentHistoryArguments(QStringLiteral("C:/Windows/System32/wsl.exe"), wslArgs, token);
+        QCOMPARE(wsl.mid(0, 4), wslArgs);
+        QCOMPARE(wsl.mid(4, 3), QStringList({QStringLiteral("--exec"), QStringLiteral("/bin/sh"), QStringLiteral("-c")}));
+        QVERIFY(wsl.last().contains(QStringLiteral("wsl-bash")));
+        QVERIFY(wsl.last().contains(QStringLiteral("__8bit_shell")));
+        QVERIFY(wsl.last().contains(QStringLiteral(".bash_profile")));
+        QVERIFY(!Platform::windowsCommandLine(QStringLiteral("C:/Windows/System32/wsl.exe"), wsl).isEmpty());
+        auto explicitWsl = wslArgs;
+        explicitWsl << QStringLiteral("--exec") << QStringLiteral("zsh");
+        QCOMPARE(Platform::persistentHistoryArguments(QStringLiteral("C:/Windows/System32/wsl.exe"), explicitWsl, token), explicitWsl);
+#else
+        const auto integrated = Platform::persistentHistoryArguments(QStringLiteral("/bin/bash"), {QStringLiteral("-l")}, token);
+        QCOMPARE(integrated.size(), 3);
+        QCOMPARE(integrated.first(), QStringLiteral("-c"));
+        QCOMPARE(integrated.last(), QStringLiteral("/bin/bash"));
+        QVERIFY(integrated.at(1).contains(QStringLiteral("777;8bitshell;") + token + QStringLiteral(";bash")));
+        QVERIFY(integrated.at(1).contains(QStringLiteral("PS0")));
+        QVERIFY(integrated.at(1).contains(QStringLiteral(".bash_profile")));
+        QVERIFY(integrated.at(1).contains(QStringLiteral("export -n PS0 PS1 PROMPT_COMMAND")));
+        const QStringList explicitArgs{QStringLiteral("-c"), QStringLiteral("printf untouched")};
+        QCOMPARE(Platform::persistentHistoryArguments(QStringLiteral("/bin/bash"), explicitArgs, token), explicitArgs);
+        QCOMPARE(Platform::persistentHistoryArguments(QStringLiteral("/bin/zsh"), {QStringLiteral("-l")}, token),
+                 QStringList({QStringLiteral("-l")}));
+#endif
+    }
 };
 QTEST_APPLESS_MAIN(PlatformTest)
 #include "PlatformTest.moc"

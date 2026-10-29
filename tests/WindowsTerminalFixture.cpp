@@ -65,6 +65,30 @@ int wmain(int argc, wchar_t** argv) {
                 previousCr = c == '\r';
             }
         }
+    } else if (mode == L"interrupt-raw") {
+        const HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+        if (!SetConsoleMode(input, ENABLE_VIRTUAL_TERMINAL_INPUT)) return 3;
+        std::printf("\x1b[?1049h\x1b[?25lINTERRUPT_READY\n"); std::fflush(stdout);
+        char bytes[32]{}; DWORD count = 0;
+        while (ReadFile(input, bytes, sizeof(bytes), &count, nullptr) && count)
+            for (DWORD n = 0; n < count; ++n)
+                if (bytes[n] == '\x03') {
+                    std::printf("\x1b[?25h\x1b[?1049l"); std::fflush(stdout); return 0;
+                }
+    } else if (mode == L"interrupt-cooked") {
+        if (!SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), ENABLE_PROCESSED_INPUT | ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT)) return 3;
+        SetConsoleCtrlHandler(nullptr, FALSE);
+        std::printf("INTERRUPT_READY\n"); std::fflush(stdout); Sleep(60000);
+    } else if (mode == L"interrupt-win32") {
+        const HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+        if (!SetConsoleMode(input, ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS)) return 3;
+        std::printf("INTERRUPT_READY\n"); std::fflush(stdout);
+        INPUT_RECORD record{}; DWORD count = 0;
+        while (ReadConsoleInputW(input, &record, 1, &count) && count) {
+            if (record.EventType == KEY_EVENT && record.Event.KeyEvent.bKeyDown
+                && record.Event.KeyEvent.wVirtualKeyCode == 'C'
+                && (record.Event.KeyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))) return 0;
+        }
     } else if (mode == L"resize") {
         std::printf("SIZE_READY\n"); std::fflush(stdout); Sleep(800);
         CONSOLE_SCREEN_BUFFER_INFO info{};

@@ -55,7 +55,8 @@ bool PtyProcess::start(const QString& program,
                        int columns,
                        int rows,
                        QString* errorMessage,
-                       const QString& workingDirectory) {
+                       const QString& workingDirectory,
+                       const QProcessEnvironment& environmentOverrides) {
     if (!workingDirectory.isEmpty() && (workingDirectory.contains(QChar::Null)
         || !QDir::isAbsolutePath(workingDirectory) || !QFileInfo(workingDirectory).isDir())) {
         setError(errorMessage, QStringLiteral("The terminal starting directory is invalid or no longer exists.")); return false;
@@ -63,9 +64,12 @@ bool PtyProcess::start(const QString& program,
     const QByteArray directory = QFile::encodeName(workingDirectory);
     stop();
 
+    const auto launchArguments = m_interactiveShell
+        ? core::Platform::persistentHistoryArguments(program, arguments, m_shellIntegrationToken) : arguments;
+
     const QByteArray executable = QFile::encodeName(program);
     if (executable.isEmpty() || !QDir::isAbsolutePath(program) || executable.contains('\0')
-        || arguments.size() > 128 || std::any_of(arguments.cbegin(), arguments.cend(), [](const QString& arg) {
+        || launchArguments.size() > 128 || std::any_of(launchArguments.cbegin(), launchArguments.cend(), [](const QString& arg) {
             return arg.contains(QChar::Null) || arg.size() > 1024 * 1024;
         })) {
         setError(errorMessage, QStringLiteral("Invalid terminal executable or arguments"));
@@ -73,9 +77,9 @@ bool PtyProcess::start(const QString& program,
     }
 
     std::vector<QByteArray> argumentStorage;
-    argumentStorage.reserve(static_cast<std::size_t>(arguments.size()) + 1U);
+    argumentStorage.reserve(static_cast<std::size_t>(launchArguments.size()) + 1U);
     argumentStorage.push_back(executable);
-    for (const auto& argument : arguments) {
+    for (const auto& argument : launchArguments) {
         argumentStorage.push_back(argument.toLocal8Bit());
     }
 
@@ -88,6 +92,9 @@ bool PtyProcess::start(const QString& program,
 
     auto environment = core::Platform::isManagedSsh(program)
                            ? core::SshSecurity::environment() : QProcessEnvironment::systemEnvironment();
+    // Only trusted application launch code supplies these per-process additions.
+    // Password broker capabilities are never inserted into the GUI environment.
+    environment.insert(environmentOverrides);
     if (m_interactiveShell && QFileInfo(program).fileName() == QStringLiteral("bash")) {
         // Bash normally writes history only when a shell exits. With several
         // 8bitShell tabs that makes Up show a stale snapshot and the newest

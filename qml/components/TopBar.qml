@@ -13,6 +13,7 @@ Rectangle {
     signal savedSessionRequested(string id)
     signal splitCountRequested(int count)
     signal settingsRequested(string section)
+    signal commandPaletteRequested()
     property bool filesVisible: false
     property int splitCount: 1
     property real navigationWidth: 300
@@ -40,10 +41,35 @@ Rectangle {
         quickConnect.forceActiveFocus()
         quickConnect.selectAll()
     }
+    function dismissSearch() { resultsPopup.close() }
+
+    function buttonSurface(control, selected) {
+        if (Theme.cyberpunkChrome && selected)
+            return control.down ? Theme.surfaceRaised : control.hovered ? Theme.surface : Theme.canvas
+        return control.down ? Theme.headerPressed : control.hovered ? Theme.headerHover
+             : selected ? Theme.accentDim : "transparent"
+    }
+    function buttonBorder(control, selected) {
+        if (control.activeFocus)
+            return Theme.cyberpunkChrome && selected ? Theme.secondaryAccent : Theme.headerFocus
+        return Theme.cyberpunkChrome ? Theme.headerControlBorder
+             : selected ? Theme.accentDim : Theme.border
+    }
 
     implicitHeight: 34
-    color: Theme.surface
-    border.color: Theme.borderSoft
+    color: Theme.headerSurface
+    border.color: Theme.chromeBorder
+
+    Rectangle {
+        objectName: "headerAccentBand"
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 3
+        z: 1
+        visible: Theme.cyberpunkChrome
+        color: Theme.accent
+    }
 
     // Empty parts of the bar move the window. Controls above this still take the click.
     DragHandler {
@@ -80,14 +106,25 @@ Rectangle {
                 anchors.rightMargin: 8
                 spacing: 6
 
-                BrandMark {}
+                Rectangle {
+                    objectName: "headerBrandBacking"
+                    Layout.preferredWidth: 28
+                    Layout.preferredHeight: 28
+                    radius: Theme.cyberpunkChrome ? 3 : 0
+                    color: Theme.cyberpunkChrome ? Theme.canvas : "transparent"
+                    BrandMark {
+                        anchors.fill: parent
+                        anchors.margins: Theme.cyberpunkChrome ? 2 : 0
+                    }
+                }
 
                 Column {
                     Layout.fillWidth: true
                     spacing: 0
                     Text { textFormat: Text.PlainText;
+                        objectName: "headerTitle"
                         text: "8bitShell"
-                        color: Theme.text
+                        color: Theme.headerText
                         font.family: Theme.uiFont
                         font.pixelSize: Theme.uiFontSize(11)
                         font.bold: true
@@ -103,6 +140,12 @@ Rectangle {
                     panelVisible: AppSettings.sidebarVisible
                     helpText: panelVisible ? "Hide connections" : "Show connections"
                     onClicked: AppSettings.sidebarVisible = !AppSettings.sidebarVisible
+                    background: Rectangle {
+                        radius: Theme.radiusSmall
+                        color: root.buttonSurface(connectionsButton, connectionsButton.panelVisible)
+                        border.color: root.buttonBorder(connectionsButton, connectionsButton.panelVisible)
+                        border.width: connectionsButton.activeFocus ? 2 : 1
+                    }
                     contentItem: Item {
                         Rectangle {
                             anchors.centerIn: parent
@@ -110,14 +153,14 @@ Rectangle {
                             height: 15
                             radius: 2
                             color: "transparent"
-                            border.color: connectionsButton.panelVisible ? Theme.accentBright : Theme.textMuted
+                            border.color: connectionsButton.panelVisible ? Theme.headerActiveText : Theme.headerTextMuted
                             Rectangle {
                                 x: 3
                                 y: 3
                                 width: 4
                                 height: 9
                                 radius: 1
-                                color: connectionsButton.panelVisible ? Theme.accentBright : Theme.textMuted
+                                color: connectionsButton.panelVisible ? Theme.headerActiveText : Theme.headerTextMuted
                                 opacity: connectionsButton.panelVisible ? 1 : 0.45
                             }
                             Rectangle {
@@ -125,7 +168,7 @@ Rectangle {
                                 y: 1
                                 width: 1
                                 height: 13
-                                color: connectionsButton.panelVisible ? Theme.accentBright : Theme.textMuted
+                                color: connectionsButton.panelVisible ? Theme.headerActiveText : Theme.headerTextMuted
                             }
                         }
                     }
@@ -136,7 +179,7 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: 1
             Layout.fillHeight: true
-            color: Theme.borderSoft
+            color: Theme.headerDivider
         }
 
         Item {
@@ -151,13 +194,15 @@ Rectangle {
 
                 Rectangle {
                     id: searchBox
+                    objectName: "quickConnectSurface"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 140
                     Layout.maximumWidth: 520
                     implicitHeight: 24
                     radius: Theme.radius
                     color: Theme.canvas
-                    border.color: quickConnect.activeFocus ? Theme.accent : Theme.border
+                    border.color: quickConnect.activeFocus
+                                  ? (Theme.cyberpunkChrome ? Theme.secondaryAccent : Theme.accent) : Theme.border
 
                     RowLayout {
                         anchors.fill: parent
@@ -266,9 +311,33 @@ Rectangle {
                     }
                 }
 
+                AppButton {
+                    id: commandPaletteButton
+                    objectName: "commandPaletteButton"
+                    text: "Search"
+                    compact: true
+                    implicitHeight: 24
+                    onClicked: root.commandPaletteRequested()
+                    Accessible.name: "Search tabs, connections and commands"
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Search tabs, connections and commands"
+                        + (AppSettings.keyBindings.commandPalette ? " · " + AppSettings.keyBindings.commandPalette : "")
+                    background: Rectangle {
+                        radius: Theme.radiusSmall
+                        color: root.buttonSurface(commandPaletteButton, false)
+                        border.color: root.buttonBorder(commandPaletteButton, false)
+                        border.width: commandPaletteButton.activeFocus ? 2 : 1
+                    }
+                    contentItem: Text {
+                        text: commandPaletteButton.text; textFormat: Text.PlainText
+                        color: Theme.headerText; font.family: Theme.uiFont; font.pixelSize: Theme.uiFontSize(10)
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    }
+                }
                 Item { Layout.fillWidth: true }
 
                 AppComboBox {
+                    id: splitSelector
                     objectName: "splitLayoutSelector"
                     Layout.preferredWidth: 92
                     implicitHeight: 24
@@ -278,6 +347,38 @@ Rectangle {
                     hoverEnabled: true
                     font.family: Theme.uiFont
                     font.pixelSize: Theme.uiFontSize(10)
+                    // Keep Basic's existing public-theme styling and restore its
+                    // bindings when leaving a saturated Cyberpunk header.
+                    Binding {
+                        target: splitSelector.background
+                        property: "color"
+                        value: root.buttonSurface(splitSelector, false)
+                        when: Theme.cyberpunkChrome
+                        restoreMode: Binding.RestoreBindingOrValue
+                    }
+                    Binding {
+                        target: splitSelector.background
+                        property: "border.color"
+                        value: root.buttonBorder(splitSelector, false)
+                        when: Theme.cyberpunkChrome
+                        restoreMode: Binding.RestoreBindingOrValue
+                    }
+                    Binding {
+                        target: splitSelector.contentItem
+                        property: "color"
+                        value: Theme.headerText
+                        when: Theme.cyberpunkChrome
+                        restoreMode: Binding.RestoreBindingOrValue
+                    }
+                    indicator: Item {
+                        implicitWidth: 12
+                        implicitHeight: 8
+                        x: splitSelector.mirrored ? 10 : splitSelector.width - width - 10
+                        y: (splitSelector.height - height) / 2
+                        opacity: splitSelector.enabled ? 1 : 0.4
+                        Rectangle { x: 1; y: 3; width: 6; height: 1; rotation: 40; color: Theme.headerTextMuted }
+                        Rectangle { x: 5; y: 3; width: 6; height: 1; rotation: -40; color: Theme.headerTextMuted }
+                    }
                     onActivated: root.splitCountRequested([1, 2, 4, 6][currentIndex])
                     Accessible.name: "Terminal layout"
                     ToolTip.visible: hovered
@@ -292,6 +393,12 @@ Rectangle {
                     compact: true
                     implicitWidth: 28
                     implicitHeight: 24
+                    background: Rectangle {
+                        radius: Theme.radiusSmall
+                        color: root.buttonSurface(appearanceButton, false)
+                        border.color: root.buttonBorder(appearanceButton, false)
+                        border.width: appearanceButton.activeFocus ? 2 : 1
+                    }
                     onClicked: AppSettings.toggleAppearance()
                     Accessible.name: AppSettings.darkAppearance
                                      ? "Switch to day appearance" : "Switch to night appearance"
@@ -307,7 +414,7 @@ Rectangle {
                             anchors.centerIn: parent
                             text: "☀"
                             textFormat: Text.PlainText
-                            color: Theme.accentBright
+                            color: Theme.cyberpunkChrome ? Theme.headerText : Theme.accentBright
                             font.family: Theme.uiFont
                             font.pixelSize: Theme.uiFontSize(20)
                             opacity: AppSettings.darkAppearance ? 0 : 1
@@ -322,7 +429,7 @@ Rectangle {
                             anchors.centerIn: parent
                             text: "☾"
                             textFormat: Text.PlainText
-                            color: Theme.accentBright
+                            color: Theme.cyberpunkChrome ? Theme.headerText : Theme.accentBright
                             font.family: Theme.uiFont
                             font.pixelSize: Theme.uiFontSize(21)
                             opacity: AppSettings.darkAppearance ? 1 : 0
@@ -335,13 +442,49 @@ Rectangle {
                     }
                 }
                 PanelButton {
+                    id: filesButton
                     objectName: "filesToggle"
                     text: "Files"
                     iconText: "▤"
                     implicitHeight: 24
+                    implicitWidth: filesContent.implicitWidth + 18
                     panelVisible: root.filesVisible
                     helpText: panelVisible ? "Hide file browser" : "Show file browser"
                     onClicked: root.toggleFiles()
+                    background: Rectangle {
+                        radius: Theme.radiusSmall
+                        color: root.buttonSurface(filesButton, filesButton.panelVisible)
+                        border.color: root.buttonBorder(filesButton, filesButton.panelVisible)
+                        border.width: filesButton.activeFocus ? 2 : 1
+                    }
+                    contentItem: Item {
+                        implicitWidth: filesContent.implicitWidth
+                        implicitHeight: filesContent.implicitHeight
+                        Row {
+                            id: filesContent
+                            anchors.centerIn: parent
+                            spacing: 7
+                            Text {
+                                text: filesButton.iconText
+                                textFormat: Text.PlainText
+                                color: Theme.cyberpunkChrome
+                                       ? (filesButton.panelVisible ? Theme.headerActiveText : Theme.headerTextMuted)
+                                       : Theme.textMuted
+                                font.family: Theme.uiFont
+                                font.pixelSize: 13
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: filesButton.text
+                                textFormat: Text.PlainText
+                                color: Theme.cyberpunkChrome && filesButton.panelVisible ? Theme.headerActiveText : Theme.headerText
+                                font.family: Theme.uiFont
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
                 }
                 AbstractButton {
                     id: profileButton
@@ -359,8 +502,8 @@ Rectangle {
                     onClicked: root.settingsRequested("Profile")
                     background: Rectangle {
                         radius: Theme.radius
-                        color: profileButton.hovered ? Theme.surfaceHover : "transparent"
-                        border.color: profileButton.activeFocus ? Theme.accent : Theme.borderSoft
+                        color: profileButton.hovered ? Theme.headerHover : "transparent"
+                        border.color: profileButton.activeFocus ? Theme.headerFocus : Theme.headerDivider
                         border.width: profileButton.activeFocus ? 2 : 1
                     }
                     contentItem: RowLayout {
@@ -374,7 +517,7 @@ Rectangle {
                         Text {
                             text: PersonalProfile.displayName
                             textFormat: Text.PlainText
-                            color: Theme.text
+                            color: Theme.headerText
                             font.family: Theme.uiFont
                             font.pixelSize: Theme.uiFontSize(10)
                             font.weight: Font.Medium
@@ -396,17 +539,20 @@ Rectangle {
                         property bool danger: false
                         implicitWidth: 40
                         hoverEnabled: true
+                        readonly property color dangerSurface: Theme.cyberpunkChrome ? "#b42339" : Theme.red
                         background: Rectangle {
                             color: parent.down
-                                   ? (parent.danger ? Qt.darker(Theme.red, 1.2) : Theme.surfaceSelected)
+                                   ? (parent.danger ? Qt.darker(parent.dangerSurface, 1.2) : Theme.headerPressed)
                                    : parent.hovered
-                                     ? (parent.danger ? Theme.red : Theme.surfaceHover)
+                                     ? (parent.danger ? parent.dangerSurface : Theme.headerHover)
                                      : "transparent"
+                            border.color: Theme.headerText
+                            border.width: Theme.cyberpunkChrome && parent.activeFocus ? 1 : 0
                         }
                         contentItem: Text {
                             text: parent.glyph
                             textFormat: Text.PlainText
-                            color: parent.danger && (parent.hovered || parent.down) ? "#ffffff" : Theme.text
+                            color: parent.danger && (parent.hovered || parent.down) ? "#ffffff" : Theme.headerText
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                             font.family: Theme.uiFont

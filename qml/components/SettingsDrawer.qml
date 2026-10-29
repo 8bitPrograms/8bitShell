@@ -22,6 +22,7 @@ Drawer {
     signal aboutRequested()
 
     property int currentSection: 0
+    property var updater: null
     readonly property var sections: [
         { name: "Profile", icon: "●" },
         { name: "Appearance", icon: "◐" },
@@ -31,7 +32,8 @@ Drawer {
         { name: "Rules", icon: "✦" },
         { name: "Logging", icon: "●" },
         { name: "Data & About", icon: "i" },
-        { name: "Local profiles", icon: ">_" }
+        { name: "Local profiles", icon: ">_" },
+        { name: "Updates", icon: "i" }
     ]
     readonly property var availableFonts: {
         const families = Qt.fontFamilies().slice()
@@ -195,6 +197,28 @@ Drawer {
             }
         }
 
+        AppButton {
+            objectName: "applicationVersionButton"
+            Layout.alignment: Qt.AlignLeft
+            Layout.leftMargin: 12
+            Layout.topMargin: 6
+            Layout.bottomMargin: 6
+            text: "8bitShell " + AppSettings.applicationVersion
+            Accessible.name: "Application version"
+            onClicked: {
+                if (AppSettings.registerVersionTap()) bonusHint.visible = true
+            }
+        }
+        Text {
+            id: bonusHint
+            objectName: "bonusThemesHint"
+            visible: false
+            Layout.fillWidth: true
+            Layout.leftMargin: 12; Layout.rightMargin: 12; Layout.bottomMargin: 6
+            text: "Blueberi, Raspberi, Silverhand, V and K unlocked."
+            textFormat: Text.PlainText; wrapMode: Text.Wrap
+            color: Theme.accent; font.pixelSize: Theme.uiFontSize(11)
+        }
         StackLayout {
                 id: pageStack
                 objectName: "settingsPages"
@@ -617,7 +641,7 @@ Drawer {
                                 Text { width: parent.width; text: "Session catalog"; textFormat: Text.PlainText; color: Theme.text; font.pixelSize: Theme.uiFontSize(10) }
                                 Text { width: parent.width; text: SessionStore.storagePath; textFormat: Text.PlainText; color: Theme.textFaint; elide: Text.ElideMiddle; font.family: Theme.monoFont; font.pixelSize: Theme.uiFontSize(8) }
                                 Text { width: parent.width; text: "Settings · " + AppSettings.storagePath; textFormat: Text.PlainText; color: Theme.textFaint; elide: Text.ElideMiddle; font.family: Theme.monoFont; font.pixelSize: Theme.uiFontSize(8) }
-                                Text { width: parent.width; text: "No passwords, passphrases, or prompt answers are stored."; textFormat: Text.PlainText; color: Theme.green; wrapMode: Text.Wrap; font.pixelSize: Theme.uiFontSize(9) }
+                                Text { width: parent.width; text: "Optional SSH passwords are protected on this device, outside YAML and exports. Passphrases and other prompt answers are not saved."; textFormat: Text.PlainText; color: Theme.green; wrapMode: Text.Wrap; font.pixelSize: Theme.uiFontSize(9) }
                             }
                         }
                         AppButton {
@@ -642,6 +666,14 @@ Drawer {
                     implicitHeight: localProfilesPage.implicitHeight + topPadding + bottomPadding
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                     LocalProfileSettings { id: localProfilesPage; width: localProfilesScroll.availableWidth }
+                }
+                ScrollView {
+                    id: updatesScroll
+                    objectName: "updatesSettingsScroll"
+                    clip: true
+                    leftPadding: 12; rightPadding: 12; topPadding: 10; bottomPadding: 12
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    UpdateSettings { width: updatesScroll.availableWidth; updater: root.updater }
                 }
         }
     }

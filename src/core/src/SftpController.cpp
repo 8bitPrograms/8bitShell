@@ -3,6 +3,8 @@
 #include <bitshell/core/SshSecurity.h>
 #include <bitshell/core/Platform.h>
 #include <bitshell/core/PrivateFile.h>
+#include <bitshell/core/PasswordBroker.h>
+#include <bitshell/core/PasswordStore.h>
 
 #include <QDir>
 #include <QDirIterator>
@@ -92,6 +94,7 @@ SftpController::SftpController(QObject* parent)
 }
 
 SftpController::~SftpController() {
+    m_passwordBroker.reset();
     if (m_process.state() != QProcess::NotRunning) {
         m_process.disconnect(this);
         m_process.kill();
@@ -228,6 +231,8 @@ void SftpController::connectToProfileAt(const QVariantMap& profile, const QStrin
 }
 
 void SftpController::disconnectFromHost() {
+    m_passwordBroker.reset();
+    m_process.setProcessEnvironment(SshSecurity::environment());
     m_timeout.stop();
     m_processFailureHandled = true;
     m_preparingDrag = false;
@@ -425,6 +430,22 @@ void SftpController::startBatch(Operation operation,
         }
     }
 
+    m_passwordBroker.reset();
+    auto environment = SshSecurity::environment();
+    if (m_profile.value(QStringLiteral("authenticationMode")).toString() == QStringLiteral("password")) {
+        auto password = PasswordStore::read(m_profile);
+        if (!password) { finishWithError(password.error()); return; }
+        if (password->isEmpty()) {
+            finishWithError(QStringLiteral("Save a password on this device in the SSH session before using password-authenticated file transfers."));
+            return;
+        }
+        m_passwordBroker = std::make_unique<PasswordBroker>();
+        const auto additions = m_passwordBroker->start(m_profile, *password);
+        password->fill('\0');
+        if (!additions) { finishWithError(additions.error()); return; }
+        for (const auto& key : additions->keys()) environment.insert(key, additions->value(key));
+    }
+
     m_operation = operation;
     m_standardOutput.clear();
     m_standardError.clear();
@@ -437,7 +458,7 @@ void SftpController::startBatch(Operation operation,
 
     m_process.setProgram(m_testTransport.isEmpty() ? command->program : m_testTransport);
     m_process.setArguments(command->arguments);
-    m_process.setProcessEnvironment(SshSecurity::environment());
+    m_process.setProcessEnvironment(environment);
     for (const auto& line : commands) {
         m_pendingBatch += line.toUtf8();
         m_pendingBatch += '\n';
@@ -451,6 +472,8 @@ void SftpController::startBatch(Operation operation,
 }
 
 void SftpController::handleFinished(int exitCode, QProcess::ExitStatus exitStatus) {
+    m_passwordBroker.reset();
+    m_process.setProcessEnvironment(SshSecurity::environment());
     m_timeout.stop();
     m_standardOutput += m_process.readAllStandardOutput();
     m_standardError += m_process.readAllStandardError();
@@ -528,6 +551,8 @@ void SftpController::handleProcessError(QProcess::ProcessError error) {
 }
 
 void SftpController::finishWithError(const QString& output) {
+    m_passwordBroker.reset();
+    m_process.setProcessEnvironment(SshSecurity::environment());
     m_timeout.stop();
     m_historyTarget = -1;
     if (m_connected) {
@@ -753,8 +778,7 @@ QString SftpController::friendlyError(const QString& output) {
         return QStringLiteral("Host key verification failed. Ask your administrator to provision the verified host key or host CA in known_hosts. Never bypass a changed-key warning.");
     }
     if (message.contains(QStringLiteral("Permission denied"), Qt::CaseInsensitive)) {
-        return QStringLiteral("SFTP authentication failed. The file panel currently uses "
-                              "your SSH key or agent and never stores a password.");
+        return QStringLiteral("SFTP authentication failed. Check the session's SSH key or agent, or update its saved password in Edit session.");
     }
     if (message.contains(QStringLiteral("Could not resolve hostname"),
                          Qt::CaseInsensitive)) {
