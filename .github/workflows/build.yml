@@ -96,7 +96,7 @@ jobs:
       - name: Build native Qt SDK on Unix
         if: matrix.os != 'windows'
         run: python scripts/ci/build-qt.py --prefix "tooling/qt-sdk-$RELEASE_ARCH" --jobs 2
-      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         if: steps.sdk.outputs.cache-hit != 'true'
         with:
           path: |
