@@ -82,7 +82,7 @@ jobs:
         if: matrix.os == 'windows'
         shell: powershell
         run: choco install nsis --version=3.11 -y --no-progress
-      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         id: sdk
         with:
           path: |
