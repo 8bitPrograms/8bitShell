@@ -1,4 +1,5 @@
 import json,os
+from pathlib import Path
 targets=[
  {"os":"windows","arch":"x64","runner":"windows-2022"},
  {"os":"windows","arch":"arm64","runner":"windows-11-arm"},
@@ -13,5 +14,10 @@ if target not in ("all","windows","linux","macos"):raise SystemExit("Invalid bui
 # where the Qt cache is actually saved. workflow_dispatch can still select macOS.
 if os.environ.get("GITHUB_EVENT_NAME")=="pull_request":
     targets=[t for t in targets if t["os"]!="macos"]
+# A version tag builds exactly the stable targets that the release must ship,
+# so a target left out of packaging/release.json cannot block the draft.
+if os.environ.get("GITHUB_REF","").startswith("refs/tags/v"):
+    stable=set(json.loads((Path(__file__).resolve().parents[2]/"packaging/release.json").read_text())["platforms"]["stable"])
+    targets=[t for t in targets if t["os"]+"-"+t["arch"] in stable]
 value=json.dumps({"include":[t for t in targets if target=="all" or t["os"]==target]},separators=(",",":"))
 with open(os.environ["GITHUB_OUTPUT"],"a") as f:f.write("native="+value+"\n")
