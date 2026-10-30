@@ -182,4 +182,4 @@ see [UPDATES.md](UPDATES.md). Automatic installation is off by default.
   a source change. The launcher runs PowerShell without a profile.
 
 Windows x64 is locally exercised. Hosted Linux/ARM/macOS and experimental 32-bit
-release validation remain separate; see [RELEASE-VALIDATION.md](RELEASE-VALIDATION.md).
+release validation remain separate and are tracked outside this repository.
