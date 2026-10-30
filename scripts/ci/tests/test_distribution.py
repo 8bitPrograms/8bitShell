@@ -39,6 +39,17 @@ class ReleaseContractTests(unittest.TestCase):
   e=dict(name=p.name,sha256=d.digest(p),os="windows",arch="x64",version="1.0.0",experimental=False,glibc=None)
   (out/"manifest-test.json").write_text(json.dumps([e]));p.write_bytes(b"tampered")
   with self.assertRaises(ValueError):d.finalize(out,"example/test")
+ def test_stamp_lists_only_release_assets_and_finalize_succeeds(self):
+  out=self.t/"release";out.mkdir();app=d.config()["app"];base=f"{app}-1.0.0-windows-arm64"
+  assets=[base+s for s in (".zip",".tar.gz",".msi","-setup.exe")]
+  for n in assets+[base+".wixpdb",base+".msi.log",base+".zip.part",f"{app}-1.0.0-windows-x64.msi"]:(out/n).write_bytes(n.encode())
+  d.stamp_assets(out,"windows","arm64")
+  names=[e["name"] for e in json.loads((out/"manifest-windows-arm64.json").read_text())]
+  self.assertEqual(sorted(names),sorted(assets))
+  # Upload only what CI's upload-artifact globs keep: the stray files are left behind.
+  for n in (base+".wixpdb",base+".msi.log",base+".zip.part"):(out/n).unlink()
+  d.finalize(out,"example/test")
+  self.assertEqual(len(json.loads((out/"release-manifest.json").read_text())["assets"]),4)
  def test_release_architecture_overrides_are_validated(self):
   with patch.dict(os.environ,RELEASE_ARCH="made-up"):
    with self.assertRaises(ValueError):d.arch()
