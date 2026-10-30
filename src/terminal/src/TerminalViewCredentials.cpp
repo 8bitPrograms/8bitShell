@@ -382,7 +382,8 @@ void TerminalView::answerCredentialPrompt(const QByteArray& data) {
         forceActiveFocus();
         if (step.prompt == CredentialFlow::Prompt::OneTimeCode)
             setStatusText(QStringLiteral("Type the verification code yourself. The login continues after it."));
-        else if (step.prompt == CredentialFlow::Prompt::Unknown || step.prompt == CredentialFlow::Prompt::Other)
+        else if (step.prompt == CredentialFlow::Prompt::Unknown || step.prompt == CredentialFlow::Prompt::HostKey
+                 || step.prompt == CredentialFlow::Prompt::Other)
             setStatusText(QStringLiteral("The server asked something %1 does not cover. Answer it yourself.").arg(sourceOf(session.name)));
         else
             setStatusText(QStringLiteral("There is no saved %1 in %2. Type it yourself.").arg(promptWord(step.prompt), sourceOf(session.name)));
