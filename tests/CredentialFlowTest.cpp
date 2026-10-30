@@ -94,7 +94,7 @@ private slots:
     void repeatedUsernameAlsoStops() {
         auto owned = flowFor(Scope::OwnedSsh); auto& flow = *owned;
         QCOMPARE(flow.feed("(jdoe@host) Username: ").action, Action::Send);
-        QCOMPARE(flow.feed("(jdoe@host) Password: ").action, Action::Send);
+        QCOMPARE(flow.feed("jdoe\r\n(jdoe@host) Password: ").action, Action::Send);
         const auto step = flow.feed("\r\nLogin incorrect\r\n(jdoe@host) Username: ");
         QCOMPARE(step.action, Action::Stop);
         QVERIFY(step.rejected);
@@ -110,7 +110,8 @@ private slots:
         step = flow.feed("(jdoe@host) Your favourite colour? ");
         QCOMPARE(step.action, Action::HandToUser);
         QCOMPARE(step.prompt, Prompt::Unknown);
-        step = flow.feed("jdoe@host's password: ");
+        // The user's answer ends the line, as ssh prints a newline after it.
+        step = flow.feed("\r\njdoe@host's password: ");
         QCOMPARE(step.action, Action::Send);
     }
 
@@ -237,19 +238,120 @@ private slots:
         }
     }
 
-    // QC2 F1: a bound tab whose ssh logged in with a key never saw a prompt.
-    // The remote shell's prompt ends the window.
-    void keyLoginClosesTheBoundWindow() {
+    // QC3 blocker: after a key login nothing in the output, whatever the
+    // remote prompt looks like, can collect the secret. The window closes on
+    // events: the first line that is not the login's, or the first keystroke.
+    void keyLoginCatOfAPromptGetsNothing_data() {
+        QTest::addColumn<QByteArray>("prompt");
+        QTest::newRow("plain $") << QByteArray("\x1b[01;32mjdoe@db01\x1b[00m:\x1b[01;34m~\x1b[00m$ ");
+        QTest::newRow("robbyrussell") << QByteArray("\x1b[1;32m\xe2\x9e\x9c  \x1b[36m~\x1b[00m ");
+        QTest::newRow("rprompt") << QByteArray("\xe2\x9e\x9c  ~ \x1b[s\x1b[60C\x1b[2m[10:12:01]\x1b[0m\x1b[u");
+        QTest::newRow("[jdoe@h ~]") << QByteArray("[jdoe@db01 ~] ");
+        QTest::newRow("fish") << QByteArray("\xe2\x8b\x8a> ~ ");
+        QTest::newRow("lambda") << QByteArray("\xce\xbb ");
+        QTest::newRow("powerline") << QByteArray("\xe2\x95\xad\xe2\x94\x80 jdoe@db01 ~\r\n\xe2\x95\xb0\xe2\x94\x80 ");
+    }
+    void keyLoginCatOfAPromptGetsNothing() {
+        QFETCH(QByteArray, prompt);
+        const QByteArray cat = "cat notes.txt\r\nmeeting at ten\r\njdoe@db01's password: ";
+        // With a motd: its first line closes the window.
+        CredentialFlow motd(secrets(), Scope::Shell);
+        motd.setTarget("jdoe", "db01");
+        QCOMPARE(motd.feed("\r\n").action, Action::None); // the Enter that launched ssh
+        QCOMPARE(motd.feed("Welcome to db01\r\nLast login: Fri Oct 30 09:12:01 2026\r\n" + prompt).action, Action::Stop);
+        QCOMPARE(motd.feed(cat).action, Action::None);
+        // Without one: the prompt alone settles nothing, the keystroke closes.
+        CredentialFlow quiet(secrets(), Scope::Shell);
+        quiet.setTarget("jdoe", "db01");
+        QCOMPARE(quiet.feed("ssh jdoe@db01\r\n").action, Action::None); // a repainted command echo
+        QVERIFY(quiet.feed(prompt).action != Action::Send);
+        if (!quiet.stopped()) QVERIFY(quiet.noteUserInput());
+        QVERIFY(quiet.stopped());
+        const auto step = quiet.feed(cat);
+        QCOMPARE(step.action, Action::None);
+        QVERIFY(step.bytes.isEmpty());
+    }
+
+    // Typing closes a bound window, except into a prompt ssh left to the user.
+    void typingClosesTheBoundWindow() {
         CredentialFlow flow(secrets(), Scope::Shell);
+        QVERIFY(!flow.noteUserInput()); // no typed ssh yet: nothing to close
         flow.setTarget("jdoe", "db01");
-        QCOMPARE(flow.feed("Last login: Fri Oct 30 09:12:01 2026\r\n").action, Action::None);
-        QCOMPARE(flow.feed("\x1b[?2004h\x1b[01;32mjdoe@db01\x1b[00m:\x1b[01;34m~\x1b[00m$ ").action, Action::Stop);
-        QCOMPARE(flow.feed("cat notes\r\njdoe@db01's password: ").action, Action::None);
-        for (const char* shell : {"root@db01:~# ", "db01% ", "PS C:\\Users\\jdoe> ", "~ \xe2\x9d\xaf "}) {
-            CredentialFlow other(secrets(), Scope::Shell);
-            other.setTarget("jdoe", "db01");
-            QCOMPARE(other.feed(QByteArray("Welcome\r\n") + shell).action, Action::Stop);
+        QCOMPARE(flow.feed("Are you sure you want to continue connecting (yes/no/[fingerprint])? ").action, Action::None);
+        QVERIFY(!flow.noteUserInput()); // the user answers ssh's question
+        QCOMPARE(flow.feed("yes\r\nWarning: Permanently added 'db01' (ED25519) to the list of known hosts.\r\n").action, Action::None);
+        QCOMPARE(flow.feed("jdoe@db01's password: ").action, Action::Send);
+        QCOMPARE(flow.feed("\r\n").action, Action::None);
+        QVERIFY(flow.noteUserInput());
+        QCOMPARE(flow.feed("jdoe@db01's password: ").action, Action::None);
+
+        CredentialFlow early(secrets(), Scope::Shell);
+        early.setTarget("jdoe", "db01");
+        QVERIFY(early.noteUserInput()); // typed before ssh asked anything
+        QCOMPARE(early.feed("jdoe@db01's password: ").action, Action::None);
+
+        auto owned = flowFor(Scope::OwnedSsh); // an owned login keeps its own rules
+        QVERIFY(!owned->noteUserInput());
+        QCOMPARE(owned->feed("jdoe@host's password: ").action, Action::Send);
+    }
+
+    // QC3 limit (a): every complete line counts, not only the last.
+    void shellPromptAndSshPromptInOneReadGetNothing() {
+        for (const QByteArray read : {QByteArray("jdoe@db01:~$ \r\njdoe@db01's password: "),
+                                      QByteArray("Last login: Fri Oct 30 09:12:01 2026\r\njdoe@db01's password: "),
+                                      QByteArray("\xe2\x9e\x9c  ~ cat x\r\n(jdoe@db01) Password: ")}) {
+            CredentialFlow flow(secrets(), Scope::Shell);
+            flow.setTarget("jdoe", "db01");
+            const auto step = flow.feed(read);
+            QCOMPARE(step.action, Action::Stop);
+            QVERIFY(step.bytes.isEmpty());
         }
+    }
+
+    // ProxyJump: the jump host's prompt is part of the login. The credential
+    // answers it only for its own user there; the target is answered either way.
+    void proxyJumpWithMatchingCredential() {
+        auto owned = flowFor(Scope::OwnedSsh); auto& flow = *owned;
+        flow.setJumpHosts("JDoe@Jump.example:2222, bastion");
+        auto step = flow.feed("jdoe@jump.example's password: ");
+        QCOMPARE(step.action, Action::Send);
+        QCOMPARE(step.bytes, QByteArray("s3cret pw\r"));
+        step = flow.feed("\r\n(jdoe@bastion) Password: "); // ssh picks bastion's user
+        QCOMPARE(step.action, Action::Send);
+        QCOMPARE(flow.feed("\r\nThe authenticity of host 'host (<no hostip for proxy command>)' can't be established.\r\n"
+                           "ED25519 key fingerprint is SHA256:abc.\r\n").action, Action::None);
+        QCOMPARE(flow.feed("Are you sure you want to continue connecting (yes/no/[fingerprint])? ").action, Action::HandToUser);
+        QCOMPARE(flow.feed("yes\r\nWarning: Permanently added 'host' (ED25519) to the list of known hosts.\r\n").action, Action::None);
+        step = flow.feed("jdoe@host's password: ");
+        QCOMPARE(step.action, Action::Send);
+        QCOMPARE(step.bytes, QByteArray("s3cret pw\r"));
+        // A jump that asks again was refused: no second try.
+        auto again = flowFor(Scope::OwnedSsh);
+        again->setJumpHosts("jump.example");
+        QCOMPARE(again->feed("jdoe@jump.example's password: ").action, Action::Send);
+        step = again->feed("\r\nPermission denied, please try again.\r\njdoe@jump.example's password: ");
+        QCOMPARE(step.action, Action::Stop);
+        QVERIFY(step.rejected);
+    }
+
+    void proxyJumpWithOtherUserIsLeftToTheUser() {
+        auto owned = flowFor(Scope::OwnedSsh); auto& flow = *owned;
+        flow.setJumpHosts("ops@jump.example,[fd00::1]:22");
+        auto step = flow.feed("ops@jump.example's password: ");
+        QCOMPARE(step.action, Action::HandToUser);
+        QVERIFY(step.bytes.isEmpty());
+        QVERIFY(!flow.stopped());
+        step = flow.feed("\r\nadmin@fd00::1's password: ");
+        QCOMPARE(step.action, Action::HandToUser);
+        QVERIFY(step.bytes.isEmpty());
+        step = flow.feed("\r\njdoe@host's password: ");
+        QCOMPARE(step.action, Action::Send);
+        QCOMPARE(step.bytes, QByteArray("s3cret pw\r"));
+        // A prompt for a host that is no jump stays foreign.
+        auto other = flowFor(Scope::OwnedSsh);
+        other->setJumpHosts("jump.example");
+        QCOMPARE(other->feed("jdoe@elsewhere's password: ").action, Action::HandToUser);
+        QVERIFY(other->stopped());
     }
 
     // QC2 F2: the byte budget counts the read that carries the prompt.
@@ -257,12 +359,13 @@ private slots:
         const QByteArray prompt = "\r\njdoe@db01's password: ";
         CredentialFlow flow(secrets(), Scope::Shell);
         flow.setTarget("jdoe", "db01");
-        const auto step = flow.feed(QByteArray(9000 - prompt.size(), 'm') + prompt);
+        // Blank filler: only the byte budget can end the window here.
+        const auto step = flow.feed(QByteArray(9000 - prompt.size(), ' ') + prompt);
         QVERIFY(step.action != Action::Send);
         QVERIFY(step.bytes.isEmpty());
         CredentialFlow fits(secrets(), Scope::Shell);
         fits.setTarget("jdoe", "db01");
-        QCOMPARE(fits.feed(QByteArray(CredentialFlow::shellWindowBytes - prompt.size(), 'm') + prompt).action, Action::Send);
+        QCOMPARE(fits.feed(QByteArray(CredentialFlow::shellWindowBytes - prompt.size(), ' ') + prompt).action, Action::Send);
     }
 
     // QC B2: a bound round expires by output size, not only by time.

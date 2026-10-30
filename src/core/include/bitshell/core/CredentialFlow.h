@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace bitshell::core {
 
@@ -30,8 +31,10 @@ struct CredentialSecrets {
 // One-time-code prompts are never answered. Every answer is sent at most once:
 // a prompt that asks for a spent answer means it was rejected, so the flow stops.
 // The flow stops for good, whether or not it answered anything, at any prompt
-// that is not ssh's (ssh's host-key question aside), at a shell prompt, and,
-// once ssh has asked for anything, at the first line that is not ssh's.
+// that is not ssh's (ssh's host-key question aside) and at the first complete
+// line that is not part of the login: in a bound tab from the typed ssh on, in
+// an owned ssh once ssh has asked for anything. A bound tab also stops at the
+// user's first keystroke unless an ssh prompt is waiting for the user.
 class CredentialFlow {
 public:
     // OwnedSsh: 8bitShell launched this ssh. Shell: a credential bound to a
@@ -59,7 +62,7 @@ public:
     static constexpr qint64 preambleBytes = 16384;
     // Output allowed before the prompt in a bound shell tab, from the typed
     // ssh to its password prompt. ssh prints a few hundred bytes at most
-    // (host-key question, warnings); a server banner fits too.
+    // (host-key question, warnings).
     static constexpr qint64 shellWindowBytes = 8192;
 
     CredentialFlow(CredentialSecrets secrets, Scope scope);
@@ -71,6 +74,14 @@ public:
     // The user@host that ssh names in its prompts. Compared case-insensitively.
     // Without one, nothing is answered except an owned key's passphrase.
     void setTarget(QByteArrayView user, QByteArrayView host);
+    // The session's ProxyJump value, "[user@]host[:port],...". A jump host's
+    // ssh prompts are part of the login: the password prompt for the
+    // credential's own user there is answered once per hop, any other goes to
+    // the user, and the window stays open for the target.
+    void setJumpHosts(QByteArrayView proxyJump);
+    // The user typed into the terminal. Ends a bound tab's window unless an
+    // ssh prompt is waiting for the user's answer. True when this stopped it.
+    bool noteUserInput();
     // Starts a new round with all answers available again (ad hoc tab, back
     // at the local prompt). The secrets are kept; a Shell flow drops its target.
     void restart();
@@ -86,17 +97,25 @@ public:
 
 private:
     enum Spent : std::uint8_t { SpentUsername = 1, SpentPassword = 2, SpentPassphrase = 4 };
+    struct Jump {
+        QByteArray user; // empty: ssh picks it, so any user at this host
+        QByteArray host;
+        bool spent = false;
+    };
 
     void append(QByteArrayView chunk);
     [[nodiscard]] bool endsLikePrompt() const;
-    [[nodiscard]] bool leftLogin() const;
-    [[nodiscard]] bool atShellPrompt() const;
+    [[nodiscard]] bool loginLine(const QByteArray& text) const;
+    [[nodiscard]] qsizetype jumpFor(const QByteArray& text, QByteArray& user) const;
     Step decide(Prompt prompt);
+    Step decideJump(Jump& jump, const QByteArray& user, const QByteArray& text);
     Step stop(bool rejected = false);
 
     CredentialSecrets m_secrets;
     QByteArray m_user;
     QByteArray m_host;
+    std::vector<Jump> m_jumps;
+    // The current line, up to its last tailCapacity bytes.
     std::array<char, tailCapacity> m_tail{};
     qsizetype m_tailSize = 0;
     qint64 m_quietBytes = 0;
@@ -104,6 +123,8 @@ private:
     std::uint8_t m_spent = 0;
     bool m_engaged = false;
     bool m_stopped = false;
+    bool m_promptSeen = false;   // the current line's prompt was already handled
+    bool m_awaitingUser = false; // an ssh prompt on the current line is the user's to answer
 };
 
 } // namespace bitshell::core

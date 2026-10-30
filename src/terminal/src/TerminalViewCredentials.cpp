@@ -203,6 +203,7 @@ void TerminalView::prepareCredential(const QVariantMap& profile, QVariantMap& ef
         CredentialFlow::Scope::OwnedSsh, resolved->id, resolved->name, keyFile);
     const auto [user, host] = sshTarget(effective);
     m_preparedCredential->flow.setTarget(user, host);
+    m_preparedCredential->flow.setJumpHosts(effective.value(QStringLiteral("proxyJump")).toString().toUtf8());
 }
 
 // A session in password mode with a remembered password. The password is
@@ -324,7 +325,7 @@ bool TerminalView::bindCredential(const QString& id) {
         CredentialFlow::Scope::Shell, resolved->id, resolved->name, QString{});
     m_preparedCredential->user = user;
     armPreparedCredential();
-    setStatusText(QStringLiteral("Credential '%1' will answer the password prompt when you type ssh %2@host in this tab, for the next %3 minutes.")
+    setStatusText(QStringLiteral("Credential '%1' will answer the password prompt of the next ssh %2@host you type in this tab, within %3 minutes.")
         .arg(m_credential->name, user).arg(m_boundCredentialMs / 60000));
     return true;
 }
@@ -347,6 +348,11 @@ void TerminalView::unbindCredential() {
     const auto name = m_credential->name;
     releaseCredential();
     setStatusText(QStringLiteral("Stopped using credential '%1' in this tab.").arg(name));
+}
+
+// A keystroke that ends a bound tab's window also lets go of the credential.
+void TerminalView::noteCredentialInput() {
+    if (m_credential->flow.noteUserInput()) releaseCredential();
 }
 
 // Runs only while a flow is armed. The flow keeps a 256-byte tail, so the
@@ -378,28 +384,30 @@ void TerminalView::answerCredentialPrompt(const QByteArray& data) {
         setStatusText(QStringLiteral("Sent the saved %1 from %2.").arg(promptWord(step.prompt), sourceOf(session.name)));
         return;
     }
-    case CredentialFlow::Action::HandToUser:
+    case CredentialFlow::Action::HandToUser: {
+        const auto source = sourceOf(session.name);
         forceActiveFocus();
         if (step.prompt == CredentialFlow::Prompt::OneTimeCode)
             setStatusText(QStringLiteral("Type the verification code yourself. The login continues after it."));
         else if (step.prompt == CredentialFlow::Prompt::Unknown || step.prompt == CredentialFlow::Prompt::HostKey
                  || step.prompt == CredentialFlow::Prompt::Other)
-            setStatusText(QStringLiteral("The server asked something %1 does not cover. Answer it yourself.").arg(sourceOf(session.name)));
+            setStatusText(QStringLiteral("The server asked something %1 does not cover. Answer it yourself.").arg(source));
         else
-            setStatusText(QStringLiteral("There is no saved %1 in %2. Type it yourself.").arg(promptWord(step.prompt), sourceOf(session.name)));
+            setStatusText(QStringLiteral("There is no saved %1 in %2. Type it yourself.").arg(promptWord(step.prompt), source));
+        // A foreign prompt in an owned login hands over and ends the flow.
+        if (session.flow.stopped()) releaseCredential();
         return;
-    case CredentialFlow::Action::Stop: {
-        const auto name = session.name;
-        const bool bound = session.flow.scope() == CredentialFlow::Scope::Shell;
+    }
+    case CredentialFlow::Action::Stop:
         if (step.rejected) {
             forceActiveFocus();
             setStatusText(QStringLiteral("The server asked again, so the saved %1 from %2 was wrong. It was not sent twice. Continue yourself.")
-                .arg(promptWord(step.prompt), sourceOf(name)));
+                .arg(promptWord(step.prompt), sourceOf(session.name)));
         }
-        // A bound tab waits for its next local prompt; an owned login is done.
-        if (!bound) releaseCredential();
+        // The window is closed for good: the secrets are wiped now, in owned
+        // and bound tabs alike, not when the tab or its timer ends.
+        releaseCredential();
         return;
-    }
     }
 }
 

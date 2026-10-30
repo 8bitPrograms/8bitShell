@@ -2,6 +2,7 @@
 #include <bitshell/terminal/TerminalView.h>
 #include <bitshell/core/Platform.h>
 #include <QCoreApplication>
+#include <QKeyEvent>
 #include <QUuid>
 
 namespace bitshell::terminal {
@@ -123,6 +124,11 @@ public:
     // What the shell-integration path records when the user types ssh in a tab.
     static void noteTypedSsh(TerminalView& terminal, const QVariantMap& requested) {
         terminal.setCurrentSshConnection(TerminalView::sshConnectionSummary(requested, QStringLiteral("local")));
+    }
+    // A key press through the view's real input path.
+    static void press(TerminalView& terminal, Qt::Key key, const QString& text = {}) {
+        QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier, text);
+        terminal.keyPressEvent(&event);
     }
     static int boundCredentialMs(const TerminalView& terminal) { return terminal.m_boundCredentialMs; }
     static void setBoundCredentialMs(TerminalView& terminal, int ms) { terminal.m_boundCredentialMs = ms; }

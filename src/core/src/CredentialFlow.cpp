@@ -60,6 +60,19 @@ bool fromSsh(const QByteArray& text, QByteArrayView user, QByteArrayView host) {
     const QByteArray who = target(user, host);
     return text == who + "'s password:" || text.startsWith('(' + who + ") ");
 }
+
+// ssh's own lines before it authenticates: the host-key question with its
+// echoed answer, the key's names, and the post-quantum warning.
+bool sshMessage(const QByteArray& text) {
+    static constexpr const char* prefixes[] = {"permission denied", "the authenticity of host",
+        "are you sure you want to continue connecting", "please type 'yes', 'no' or the fingerprint",
+        "this key is not known by any other names", "this host key is known by the following other names",
+        "warning: permanently added", "** warning: connection is not using a post-quantum",
+        "** this session may be vulnerable", "** the server may need to be upgraded"};
+    for (const char* prefix : prefixes)
+        if (text.startsWith(prefix)) return true;
+    return text.contains(" key fingerprint is ") || text.contains("known_hosts:");
+}
 } // namespace
 
 void CredentialSecrets::wipe() {
@@ -83,12 +96,45 @@ CredentialFlow::~CredentialFlow() {
     secureZero(m_tail.data(), m_tail.size());
 }
 
+void CredentialFlow::setJumpHosts(QByteArrayView proxyJump) {
+    m_jumps.clear();
+    const QByteArray list = lower(proxyJump);
+    for (qsizetype begin = 0; begin <= list.size();) {
+        qsizetype end = list.indexOf(',', begin);
+        if (end < 0) end = list.size();
+        const QByteArrayView hop = QByteArrayView(list).sliced(begin, end - begin).trimmed();
+        begin = end + 1;
+        const qsizetype at = hop.lastIndexOf('@');
+        Jump jump;
+        if (at > 0) jump.user = hop.first(at).toByteArray();
+        QByteArrayView host = hop.sliced(at + 1);
+        if (host.startsWith('[')) {
+            const qsizetype close = host.indexOf(']');
+            host = close > 0 ? host.sliced(1, close - 1) : QByteArrayView{};
+        } else if (const qsizetype colon = host.indexOf(':'); colon >= 0) {
+            host = host.first(colon);
+        }
+        if (host.isEmpty()) continue;
+        jump.host = host.toByteArray();
+        m_jumps.push_back(std::move(jump));
+    }
+}
+
+bool CredentialFlow::noteUserInput() {
+    if (m_stopped || m_scope != Scope::Shell || m_host.isEmpty() || m_awaitingUser) return false;
+    m_stopped = true;
+    return true;
+}
+
 void CredentialFlow::restart() {
     m_tailSize = 0;
     m_quietBytes = 0;
     m_spent = 0;
     m_engaged = false;
     m_stopped = false;
+    m_promptSeen = false;
+    m_awaitingUser = false;
+    for (Jump& jump : m_jumps) jump.spent = false;
     if (m_scope == Scope::Shell) setTarget({}, {});
 }
 
@@ -200,37 +246,78 @@ CredentialFlow::Step CredentialFlow::stop(bool rejected) {
     return step;
 }
 
-// Once ssh has asked, a line that is not ssh's means the login is over.
-bool CredentialFlow::leftLogin() const {
-    const QByteArrayView tail(m_tail.data(), m_tailSize);
-    const qsizetype last = tail.lastIndexOf('\n');
-    for (qsizetype begin = 0; begin <= last;) {
-        const qsizetype end = tail.indexOf('\n', begin);
-        QByteArrayView raw = tail.sliced(begin, end - begin);
-        while (!raw.isEmpty() && raw.back() == '\r') raw.chop(1);
-        const QByteArray line = lower(promptLine(raw));
-        if (!line.isEmpty() && !line.startsWith("permission denied") && !fromSsh(line, m_user, m_host))
-            return true;
-        begin = end + 1;
-    }
-    return false;
+// Whether a complete, lowercased line belongs to the login: ssh's prompts for
+// the target or a jump host, ssh's own messages, or the typed command's echo
+// (the typed-ssh grammar always ends it with the host).
+bool CredentialFlow::loginLine(const QByteArray& text) const {
+    if (text.isEmpty() || fromSsh(text, m_user, m_host) || sshMessage(text)) return true;
+    QByteArray user;
+    if (jumpFor(text, user) >= 0) return true;
+    return m_scope == Scope::Shell && text.contains("ssh")
+        && (text.endsWith(' ' + m_host) || text.endsWith('@' + m_host));
 }
 
-// A shell prompt on the last line means a shell is running: the login is
-// over, even one that never asked for anything (a key or agent login).
-bool CredentialFlow::atShellPrompt() const {
-    if (m_tailSize == 0 || m_tail[m_tailSize - 1] == '\n') return false;
-    const QByteArray line = promptLine(QByteArrayView(m_tail.data(), m_tailSize));
-    return !line.isEmpty() && (QByteArrayView("$#%>").contains(line.back()) || line.endsWith("\xe2\x9d\xaf"));
+// The index of the jump host whose OpenSSH prompt this lowercased line is, or
+// -1; user gets the account the prompt names.
+qsizetype CredentialFlow::jumpFor(const QByteArray& text, QByteArray& user) const {
+    if (m_jumps.empty()) return -1;
+    QByteArrayView who;
+    if (text.startsWith('(')) {
+        const qsizetype close = text.indexOf(") ");
+        if (close < 0) return -1;
+        who = QByteArrayView(text).sliced(1, close - 1);
+    } else if (text.endsWith("'s password:")) {
+        who = QByteArrayView(text).chopped(12);
+    } else {
+        return -1;
+    }
+    const qsizetype at = who.lastIndexOf('@');
+    if (at <= 0) return -1;
+    const QByteArrayView name = who.first(at), host = who.sliced(at + 1);
+    for (qsizetype index = 0; index < qsizetype(m_jumps.size()); ++index) {
+        const Jump& jump = m_jumps[size_t(index)];
+        if (jump.host == host && (jump.user.isEmpty() || jump.user == name)) {
+            user = name.toByteArray();
+            return index;
+        }
+    }
+    return -1;
+}
+
+// A jump host's prompt is part of the login and never ends the window. Only
+// its password prompt for the credential's own user is answered, once.
+CredentialFlow::Step CredentialFlow::decideJump(Jump& jump, const QByteArray& user, const QByteArray& text) {
+    Step step;
+    step.prompt = classify(text, m_scope, user, jump.host, {});
+    m_quietBytes = 0;
+    const bool ours = step.prompt == Prompt::Password && user == lower(m_secrets.username)
+        && !m_secrets.password.isEmpty();
+    if (!ours) {
+        // Another account's login at the jump: not this credential's question.
+        if (step.prompt != Prompt::OneTimeCode) step.prompt = Prompt::Unknown;
+        m_awaitingUser = true;
+        step.action = Action::HandToUser;
+        return step;
+    }
+    if (jump.spent) {
+        step = stop(true);
+        step.prompt = Prompt::Password;
+        return step;
+    }
+    jump.spent = true;
+    step.action = Action::Send;
+    step.bytes.reserve(m_secrets.password.size() + 1);
+    step.bytes.append(m_secrets.password).append('\r');
+    return step;
 }
 
 CredentialFlow::Step CredentialFlow::decide(Prompt prompt) {
     Step step;
     step.prompt = prompt;
-    m_tailSize = 0;
     m_quietBytes = 0;
     switch (prompt) {
     case Prompt::HostKey: // ssh's own question, before it authenticates
+        m_awaitingUser = true;
         if (m_scope == Scope::OwnedSsh) step.action = Action::HandToUser;
         return step;
     case Prompt::Other: // someone else asks: whatever happens next, it is not this login
@@ -240,6 +327,7 @@ CredentialFlow::Step CredentialFlow::decide(Prompt prompt) {
     case Prompt::OneTimeCode:
     case Prompt::Unknown:
         m_engaged = true;
+        m_awaitingUser = true;
         step.action = Action::HandToUser;
         return step;
     default:
@@ -256,6 +344,7 @@ CredentialFlow::Step CredentialFlow::decide(Prompt prompt) {
         return step;
     }
     if (answer->isEmpty()) {
+        m_awaitingUser = true;
         step.action = Action::HandToUser;
         return step;
     }
@@ -273,15 +362,40 @@ CredentialFlow::Step CredentialFlow::feed(QByteArrayView chunk) {
     m_quietBytes += chunk.size();
     const qint64 limit = m_spent ? settledBytes : m_scope == Scope::OwnedSsh ? preambleBytes : shellWindowBytes;
     if (m_quietBytes > limit) return stop();
-    append(chunk);
-    if (endsLikePrompt()) {
-        const QByteArray line = promptLine(QByteArrayView(m_tail.data(), m_tailSize));
-        const Prompt prompt = classify(line, m_scope, m_user, m_host, m_secrets.keyPath);
-        if (prompt != Prompt::None) return decide(prompt);
-    } else if (atShellPrompt() || (m_engaged && leftLogin())) {
-        return stop();
+    // Every complete line is judged, not only the last: a bound tab's window
+    // ends at the first one that is not the login's, an owned login's once
+    // ssh has asked for anything. The one exception: once ssh has asked, the
+    // lines that arrive with a keyboard-interactive prompt for the target are
+    // that prompt's instructions (Duo, "Login incorrect"). An answer already
+    // given is never given again, so they cannot pull a secret out twice.
+    bool instructions = false;
+    if (m_engaged) {
+        const QByteArray last = lower(promptLine(chunk.sliced(chunk.lastIndexOf('\n') + 1)));
+        instructions = (last.endsWith(':') || last.endsWith('?')) && last.startsWith('(' + target(m_user, m_host) + ") ");
     }
-    return {};
+    for (qsizetype newline = chunk.indexOf('\n'); newline >= 0; newline = chunk.indexOf('\n')) {
+        QByteArrayView piece = chunk.first(newline);
+        chunk = chunk.sliced(newline + 1);
+        append(piece);
+        QByteArrayView raw(m_tail.data(), m_tailSize);
+        while (!raw.isEmpty() && raw.back() == '\r') raw.chop(1);
+        const QByteArray line = lower(promptLine(raw));
+        m_tailSize = 0;
+        m_promptSeen = false;
+        m_awaitingUser = false;
+        if ((m_scope == Scope::Shell || m_engaged) && !instructions && !loginLine(line)) return stop();
+    }
+    append(chunk);
+    // The current line is a prompt once; bytes added to it later (an echoed
+    // answer, a cursor sequence) never ask again.
+    if (m_promptSeen || !endsLikePrompt()) return {};
+    m_promptSeen = true;
+    const QByteArray line = promptLine(QByteArrayView(m_tail.data(), m_tailSize));
+    QByteArray user;
+    if (const qsizetype jump = jumpFor(lower(line), user); jump >= 0)
+        return decideJump(m_jumps[size_t(jump)], user, lower(line));
+    const Prompt prompt = classify(line, m_scope, m_user, m_host, m_secrets.keyPath);
+    return prompt == Prompt::None ? Step{} : decide(prompt);
 }
 
 } // namespace bitshell::core

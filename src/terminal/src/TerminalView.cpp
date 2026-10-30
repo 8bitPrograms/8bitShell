@@ -921,6 +921,7 @@ void TerminalView::sendText(const QString& text) {
         ++m_localSshRefreshSerial;
         clearLocalSshQuery();
         if (text.contains(u'\r') || text.contains(u'\n') || text.contains(QChar(3))) m_localPromptActive = false;
+        if (m_credential) [[unlikely]] noteCredentialInput();
         m_process.write(text.toUtf8());
     }
 }
@@ -1202,6 +1203,7 @@ void TerminalView::writePaste(const QString& text, bool appendEnter) {
     ++m_localSshRefreshSerial;
     clearLocalSshQuery();
     if (appendEnter || text.contains(u'\r') || text.contains(u'\n')) m_localPromptActive = false;
+    if (m_credential) [[unlikely]] noteCredentialInput();
     QMutexLocker locker(&m_terminalMutex);
     vterm_keyboard_start_paste(m_terminal);
     m_process.write(text.toUtf8());
@@ -1564,6 +1566,15 @@ void TerminalView::keyPressEvent(QKeyEvent* event) {
             event->accept();
             return;
         }
+    }
+    // A keystroke ends a bound credential's window unless ssh is waiting for
+    // the user. Noted before the Enter below names a typed ssh's target, so
+    // the Enter that launches it never closes the new window.
+    if (m_credential) [[unlikely]] {
+        const int key = event->key();
+        if (key != Qt::Key_Shift && key != Qt::Key_Control && key != Qt::Key_Alt && key != Qt::Key_Meta
+            && key != Qt::Key_AltGr && key != Qt::Key_CapsLock)
+            noteCredentialInput();
     }
     // Suggestions describe rendered, settled input. Invalidate immediately on
     // typing so a fast Enter never selects a host from an older visible line.

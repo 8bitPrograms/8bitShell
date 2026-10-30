@@ -334,6 +334,7 @@ private:
     void armPreparedCredential();
     void releaseCredential();
     void answerCredentialPrompt(const QByteArray& data);
+    void noteCredentialInput();
     void targetBoundCredential(const QVariantMap& connection);
     [[nodiscard]] bitshell::core::SecretVault& credentialVault() const;
     void rebuildSearchMatchesLocked(bool incremental = false);
