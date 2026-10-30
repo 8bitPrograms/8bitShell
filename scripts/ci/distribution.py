@@ -174,10 +174,19 @@ cp -a "{payload}/." %{{buildroot}}/
     with tarfile.open(raw,"w",dereference=True) as t:
         for p in payload.iterdir():t.add(p,arcname=p.name,filter=root_owner)
     run(["zstd","-q","-T0","-f",raw,"-o",out/f'{app}-{v}-linux-{cpu}.pkg.tar.zst']);shutil.rmtree(work)
+# Release assets each target publishes, as suffixes after "<app>-<version>-<os>-<cpu>".
+# Anything else a packaging tool leaves in the output folder (WiX .wixpdb,
+# logs, partial downloads) is not a release asset and must not be stamped.
+RELEASE_ASSETS={
+    "windows":(".zip",".tar.gz",".msi","-setup.exe"),
+    "linux":(".zip",".tar.gz",".deb",".rpm",".pkg.tar.zst"),
+    "macos":(".zip",".tar.gz",".dmg"),
+}
 def stamp_assets(out,system,cpu):
     out=Path(out);c=config();v=version();entries=[]
+    wanted={f'{c["app"]}-{v}-{system}-{cpu}{suffix}' for suffix in RELEASE_ASSETS[system]}
     for p in sorted(out.iterdir()):
-        if p.is_file() and p.name.startswith(f'{c["app"]}-{v}-{system}-{cpu}') and not p.name.endswith((".json",".tsv",".txt")):
+        if p.is_file() and p.name in wanted:
             entries.append({"name":p.name,"sha256":digest(p),"size":p.stat().st_size,"os":system,"arch":cpu,"version":v,"glibc":c.get("linuxGlibcByArch",{}).get(cpu,c["linuxGlibc"]) if system=="linux" else None,"experimental":cpu in ("x86","armv7")})
     if not entries:raise ValueError("No packages produced")
     (out/f"manifest-{system}-{cpu}.json").write_text(json.dumps(entries,indent=2)+"\n")

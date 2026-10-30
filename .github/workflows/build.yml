@@ -50,6 +50,9 @@ jobs:
         run: python scripts/ci/matrix.py
   native:
     needs: plan
+    # A tag build of only unreleased targets (e.g. target=macos on v1.0.0) plans no
+    # jobs; skip instead of failing on an empty matrix.
+    if: fromJSON(needs.plan.outputs.native).include[0] != null
     name: ${{ matrix.os }} / ${{ matrix.arch }}
     strategy:
       fail-fast: false

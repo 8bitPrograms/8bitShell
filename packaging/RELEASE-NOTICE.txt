@@ -6,10 +6,11 @@ later version. The binding text is the repository LICENSE file. Third-party
 components retain their own licenses. This notice does not replace or restrict
 those licenses.
 
-The installer publication workflow stays closed until third-party redistribution
-and Windows packaging review are recorded in packaging/release-policy.json.
+The project license, third-party redistribution and Windows packaging tools
+reviews for 1.0.0 are recorded in packaging/release-policy.json, which the
+installer publication workflow checks before it prepares a draft release.
 That workflow gate does not change the GPL grant.
 
 The application is not a certified or independently audited security product.
-Windows previews require the Microsoft Visual C++ x64 Redistributable and the
-Windows OpenSSH Client, installed through the normal approved OS process.
+Windows packages bundle the Microsoft Visual C++ runtime DLLs app-locally and
+the Win32-OpenSSH client tools; neither needs a separate OS install.
