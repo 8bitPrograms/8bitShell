@@ -1,7 +1,7 @@
 # Security policy
 
 8bitShell is currently a pre-release Linux application with a native Windows preview. The hardening controls and local
-validation evidence are documented in [the security assessment](docs/SECURITY-ASSESSMENT.md).
+validation evidence are recorded in the maintainers' security assessment, kept outside this repository.
 There is no independent security certification, FIPS claim, or supported enterprise LTS
 release at this stage. Windows and future protocol/credential integrations are not covered
 by the Linux assessment. The native Windows implementation and remaining acceptance
