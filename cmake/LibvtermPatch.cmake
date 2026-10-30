@@ -109,6 +109,36 @@ function(bitshell_patch_vterm_state input output)
     if(state->combine_width < 1)
       break;
 ]=])
+    # Local guard, no upstream fix: ignore tab stop columns outside the screen.
+    replace_checked(
+        [=[static void set_col_tabstop(VTermState *state, int col)
+{
+  unsigned char mask = 1 << (col & 7);
+  state->tabstops[col >> 3] |= mask;
+}
+
+static void clear_col_tabstop(VTermState *state, int col)
+{
+  unsigned char mask = 1 << (col & 7);
+  state->tabstops[col >> 3] &= ~mask;
+}]=]
+        [=[static void set_col_tabstop(VTermState *state, int col)
+{
+  /* Ignore columns outside the screen (local 8bitShell guard). */
+  if(col < 0 || col >= state->cols)
+    return;
+  unsigned char mask = 1 << (col & 7);
+  state->tabstops[col >> 3] |= mask;
+}
+
+static void clear_col_tabstop(VTermState *state, int col)
+{
+  /* Ignore columns outside the screen (local 8bitShell guard). */
+  if(col < 0 || col >= state->cols)
+    return;
+  unsigned char mask = 1 << (col & 7);
+  state->tabstops[col >> 3] &= ~mask;
+}]=])
     get_filename_component(directory "${output}" DIRECTORY)
     file(MAKE_DIRECTORY "${directory}")
     file(CONFIGURE OUTPUT "${output}" CONTENT "${state}" @ONLY)
