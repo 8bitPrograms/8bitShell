@@ -32,6 +32,7 @@ public:
     static quint64 localPromptGeneration(const TerminalView& terminal) { return terminal.m_localPromptGeneration; }
     static qint64 processId(const TerminalView& terminal) { return terminal.m_process.processId(); }
     static bool localSshPending(const TerminalView& terminal) { return !terminal.m_pendingLocalSshCommand.isEmpty(); }
+    static bool passwordHandoffActive(const TerminalView& terminal) { return terminal.m_passwordBroker != nullptr; }
     static void resetLocalScreen(TerminalView& terminal) { terminal.resetTerminal(); }
     static bool localKeyConsumed(const TerminalView& terminal, int key) { return terminal.m_consumedLocalSshKeys.contains(key); }
     static QVariantMap sshConnectionSummary(const QVariantMap& profile, const QString& mode) {

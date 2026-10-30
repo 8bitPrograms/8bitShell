@@ -65,6 +65,7 @@ private slots:
     void forgetRequiresSaveAndCancelClearsTheEditor();
     void exportedAndImportedProfilesNeverCarryThePassword();
     void localSuggestionsDescribePasswordAuthenticationWithoutConnecting();
+    void savedPasswordIsRecalledAfterRestart();
 private:
     QVariantList fixtureCommand() const;
     QObject* named(const QString& name) const {
@@ -84,6 +85,8 @@ private:
     bool save();
     bool createRemembered();
     void captureEmptyEditor() const;
+    void startApplication();
+    void stopApplication();
 
     QTemporaryDir m_profile;
     QString m_profileDirectory;
@@ -119,6 +122,10 @@ void PasswordUiTest::init() {
     qputenv("XDG_CONFIG_HOME", m_profileDirectory.toUtf8());
     qputenv("XDG_CACHE_HOME", QDir(m_profileDirectory).filePath(QStringLiteral("cache")).toUtf8());
     m_warnings.clear();
+    startApplication();
+}
+
+void PasswordUiTest::startApplication() {
     m_engine = std::make_unique<QQmlApplicationEngine>();
     connect(m_engine.get(), &QQmlEngine::warnings, this, [this](const QList<QQmlError>& warnings) {
         for (const auto& warning : warnings) m_warnings.append(warning.toString());
@@ -145,6 +152,11 @@ void PasswordUiTest::init() {
 }
 
 void PasswordUiTest::cleanup() {
+    stopApplication();
+    QVERIFY2(m_warnings.isEmpty(), qPrintable(m_warnings.join(u'\n')));
+}
+
+void PasswordUiTest::stopApplication() {
     QCoreApplication::processEvents();
     if (m_engine && m_engine->incubationController())
         QTRY_COMPARE(m_engine->incubationController()->incubatingObjectCount(), 0);
@@ -153,7 +165,6 @@ void PasswordUiTest::cleanup() {
     if (m_window) m_window->close();
     m_engine.reset();
     m_window = nullptr; m_pane = nullptr; m_sessions = nullptr; m_localProfiles = nullptr;
-    QVERIFY2(m_warnings.isEmpty(), qPrintable(m_warnings.join(u'\n')));
 }
 
 bool PasswordUiTest::openCreate() {
@@ -394,6 +405,53 @@ void PasswordUiTest::localSuggestionsDescribePasswordAuthenticationWithoutConnec
     QTest::keyClick(m_window, Qt::Key_Escape); // Dismiss only; never activate the SSH row.
     QTRY_VERIFY(!suggestions->property("showing").toBool());
     TerminalTestAccess::stopFixture(*terminal());
+}
+
+void PasswordUiTest::savedPasswordIsRecalledAfterRestart() {
+    const bool keyring = PasswordStore::available();
+    if (keyring) {
+        QVERIFY2(createRemembered(), qPrintable(editor() ? editor()->property("formError").toString() : QStringLiteral("No session editor")));
+    } else {
+        auto profile = target();
+        profile[QStringLiteral("name")] = QStringLiteral("Password test account");
+        profile[QStringLiteral("authenticationMode")] = QStringLiteral("password");
+        QCOMPARE(m_sessions->addSession(profile), 0);
+    }
+    const auto saved = m_sessions->get(0);
+
+    stopApplication();
+    QVERIFY(!QTest::currentTestFailed());
+    startApplication();
+    QVERIFY(!QTest::currentTestFailed());
+    QCOMPARE(m_sessions->count(), 1);
+    QCOMPARE(m_sessions->get(0).value(QStringLiteral("id")), saved.value(QStringLiteral("id")));
+
+    const auto terminals = [this] {
+        QList<TerminalView*> found;
+        QList<QQuickItem*> pending{qobject_cast<QQuickItem*>(m_pane)};
+        while (!pending.isEmpty()) {
+            auto* item = pending.takeLast();
+            if (auto* view = qobject_cast<TerminalView*>(item)) found.append(view);
+            pending.append(item->childItems());
+        }
+        return found;
+    };
+    const auto before = terminals();
+    QVERIFY(QMetaObject::invokeMethod(m_pane, "openProfile", Q_ARG(QVariant, QVariant(m_sessions->get(0)))));
+    QCOMPARE(m_pane->property("tabCount").toInt(), 2);
+    // The tab's terminal launches ssh while the tab is created. Inspect it before
+    // the event loop runs, because an unreachable host ends ssh and its handoff.
+    TerminalView* opened = nullptr;
+    for (auto* candidate : terminals())
+        if (!before.contains(candidate)) opened = candidate;
+    QVERIFY(opened);
+    if (keyring)
+        QVERIFY2(TerminalTestAccess::passwordHandoffActive(*opened), qPrintable(opened->statusText()));
+    // The file browser and host monitor use the active tab's profile.
+    QTRY_COMPARE(nativeVariant(m_pane->property("activeProfile")).toMap().value(QStringLiteral("id")), saved.value(QStringLiteral("id")));
+    const auto active = nativeVariant(m_pane->property("activeProfile")).toMap();
+    QCOMPARE(active.value(QStringLiteral("authenticationMode")).toString(), QStringLiteral("password"));
+    QCOMPARE(PasswordStore::has(active), keyring);
 }
 
 int main(int argc, char* argv[]) {
