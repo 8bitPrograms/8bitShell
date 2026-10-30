@@ -31,6 +31,7 @@ private slots:
     void deletionRejectsStaleSelectionAndExternalWrites();
     void bulkFolderMacroCleanupPreservesGroupsAndSiblings();
     void passwordProfilesKeepSecretsOutsideTheCatalog();
+    void credentialReferenceIsMetadataOnly();
     void passwordChangesRollbackWhenTheCatalogConflicts();
     void deletingPasswordProfilesRemovesSecretsAndRollsBackConflicts();
 
@@ -469,6 +470,31 @@ void SessionStoreTest::importsMRemoteNgHierarchyWithoutSecrets() {
     QVERIFY(!persisted.contains(QByteArrayLiteral("secret-one")));
     QVERIFY(!persisted.contains(QByteArrayLiteral("secret-two")));
     QVERIFY(!persisted.contains(QByteArrayLiteral("encrypted-root-secret")));
+}
+
+void SessionStoreTest::credentialReferenceIsMetadataOnly() {
+    const QString id = QStringLiteral("0f8fad5b-d9cb-469f-a165-70867728950e");
+    {
+        SessionStore store;
+        QCOMPARE(store.saveSessionWithPassword(-1, {{QStringLiteral("host"), QStringLiteral("plain.example.test")}}, {}, QStringLiteral("remove")), 0);
+        QFile catalog(store.storagePath()); QVERIFY(catalog.open(QIODevice::ReadOnly));
+        // Unused, the field stays out of the file so older versions still read it.
+        QVERIFY(!catalog.readAll().contains("credential"));
+        catalog.close();
+        QCOMPARE(store.saveSessionWithPassword(-1, {{QStringLiteral("host"), QStringLiteral("cred.example.test")},
+            {QStringLiteral("credential"), id}}, {}, QStringLiteral("remove")), 1);
+        QVERIFY(catalog.open(QIODevice::ReadOnly));
+        QVERIFY(catalog.readAll().contains("credential: " + id.toUtf8()));
+        catalog.close();
+        const auto candidates = store.sshCandidates(QStringLiteral("cred.example.test"), {}, 0, false, {}).value(QStringLiteral("results")).toList();
+        QCOMPARE(candidates.first().toMap().value(QStringLiteral("authentication")).toString(), QStringLiteral("Saved credential"));
+        // A credential answers prompts itself, so password mode is refused.
+        QVERIFY(store.saveSessionWithPassword(1, {{QStringLiteral("authenticationMode"), QStringLiteral("password")}}, {}, QStringLiteral("remove")) < 0);
+        QVERIFY(store.saveSessionWithPassword(1, {{QStringLiteral("credential"), QStringLiteral("not-an-id")}}, {}, QStringLiteral("remove")) < 0);
+    }
+    SessionStore reloaded;
+    QCOMPARE(reloaded.get(1).value(QStringLiteral("credential")).toString(), id);
+    QCOMPARE(reloaded.get(0).value(QStringLiteral("credential")).toString(), QString{});
 }
 
 QTEST_APPLESS_MAIN(SessionStoreTest)

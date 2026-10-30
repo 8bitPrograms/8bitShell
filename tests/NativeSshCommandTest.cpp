@@ -178,7 +178,17 @@ private slots:
             const auto command = SshSecurity::command(value, transport);
             QVERIFY2(command, qPrintable(command ? QString{} : command.error()));
             QVERIFY(command->arguments.contains(QStringLiteral("-oPubkeyAuthentication=no")));
-            QVERIFY(command->arguments.contains(QStringLiteral("-oKbdInteractiveAuthentication=no")));
+            if (transport == SshSecurity::Transport::Terminal) {
+                // A tab can log in with keyboard-interactive too (password, then a 2FA code).
+                QVERIFY(command->arguments.contains(QStringLiteral("-oPreferredAuthentications=keyboard-interactive,password")));
+                QVERIFY(command->arguments.contains(QStringLiteral("-oKbdInteractiveAuthentication=yes")));
+                QVERIFY(!command->arguments.contains(QStringLiteral("-oKbdInteractiveAuthentication=no")));
+                QVERIFY(!command->arguments.contains(QStringLiteral("-oPreferredAuthentications=password")));
+            } else {
+                // Askpass answers only OpenSSH's own password prompt, so these stay password-only.
+                QVERIFY(command->arguments.contains(QStringLiteral("-oPreferredAuthentications=password")));
+                QVERIFY(command->arguments.contains(QStringLiteral("-oKbdInteractiveAuthentication=no")));
+            }
             QVERIFY(command->arguments.contains(QStringLiteral("-oNumberOfPasswordPrompts=1")));
             QVERIFY(!command->arguments.contains(QStringLiteral("-i")));
             if (transport != SshSecurity::Transport::Terminal) {

@@ -2389,6 +2389,24 @@ void UiInteractionTest::cyberArkAndPersonalProfileControls() {
     QVERIFY(QMetaObject::invokeMethod(pane, "closeTab", Q_ARG(QVariant, pane->property("currentIndex"))));
     QTRY_COMPARE(pane->property("tabCount").toInt(), before);
     QTRY_VERIFY(pane->property("activeTerminal").value<QObject*>() != nullptr);
+    // A saved session's credential id must survive the tab model. An unknown
+    // id reaches TerminalView, which falls back to a normal login (ssh then
+    // fails to resolve the reserved .test name; no server is contacted).
+    const QVariantMap withCredential{{QStringLiteral("host"), QStringLiteral("db.example.test")},
+        {QStringLiteral("name"), QStringLiteral("Credential bridge")},
+        {QStringLiteral("credential"), QStringLiteral("{6f1c2b8e-0d4a-4c55-9a43-2f1e8d7b9c10}")}};
+    auto* terminalBefore = pane->property("activeTerminal").value<QObject*>();
+    QVERIFY(QMetaObject::invokeMethod(pane, "appendPreparedProfile", Q_ARG(QVariant, withCredential)));
+    QTRY_COMPARE(pane->property("tabCount").toInt(), before + 1);
+    QTRY_VERIFY(pane->property("activeTerminal").value<QObject*>() != terminalBefore);
+    auto* credentialTerminal = qobject_cast<bitshell::terminal::TerminalView*>(pane->property("activeTerminal").value<QObject*>());
+    QVERIFY(credentialTerminal != nullptr);
+    // The launched profile still names the credential: the id crossed the tab model.
+    QTRY_COMPARE(bitshell::terminal::TerminalTestAccess::lastSshProfile(*credentialTerminal).value(QStringLiteral("credential")).toString(),
+                 withCredential.value(QStringLiteral("credential")).toString());
+    QVERIFY(credentialTerminal->credentialName().isEmpty());
+    QVERIFY(QMetaObject::invokeMethod(pane, "closeTab", Q_ARG(QVariant, pane->property("currentIndex"))));
+    QTRY_COMPARE(pane->property("tabCount").toInt(), before);
     QVERIFY(personal->setUsername({}));
     QVERIFY(QMetaObject::invokeMethod(pane, "openProfile", Q_ARG(QVariant, profile)));
     auto* error = namedObject(QStringLiteral("connectionErrorDialog"));

@@ -110,6 +110,7 @@ qt_add_qml_module(bitshell_ui
         qml/components/FolderConnectionDialog.qml
         qml/components/PersonalProfileDialog.qml
         qml/components/SshKeyManager.qml
+        qml/components/CredentialManager.qml
         qml/components/AboutDialog.qml
         qml/components/ProfileAvatar.qml
         qml/components/ProfileSettings.qml

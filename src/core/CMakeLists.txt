@@ -7,6 +7,9 @@ target_sources(bitshell_core
         src/PersonalProfile.cpp
         src/SshKeyStore.cpp
         src/PasswordStore.cpp
+        src/CredentialFlow.cpp
+        src/SecureMemory.cpp
+        src/CredentialStore.cpp
         src/PasswordBroker.cpp
         src/SshSecurity.cpp
         src/NativeSshCommand.cpp
@@ -33,6 +36,9 @@ target_sources(bitshell_core
             include/bitshell/core/PersonalProfile.h
             include/bitshell/core/SshKeyStore.h
             include/bitshell/core/PasswordStore.h
+            include/bitshell/core/CredentialFlow.h
+            include/bitshell/core/SecureMemory.h
+            include/bitshell/core/CredentialStore.h
             include/bitshell/core/PasswordBroker.h
             include/bitshell/core/SshSecurity.h
             include/bitshell/core/NativeSshCommand.h

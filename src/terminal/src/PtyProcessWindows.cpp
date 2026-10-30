@@ -1,10 +1,12 @@
 #include <bitshell/terminal/PtyProcess.h>
 #include <bitshell/core/Platform.h>
+#include <bitshell/core/SecureMemory.h>
 #include <utility>
 #include <bitshell/core/SshSecurity.h>
 #include <QDir>
 #include <QFileInfo>
 #include <QMetaObject>
+#include <QScopeGuard>
 #include <QProcessEnvironment>
 #include <windows.h>
 #include <algorithm>
@@ -31,6 +33,7 @@ struct PtyProcess::WindowsState {
     std::condition_variable changed;
     QByteArray received, pendingInput;
     qsizetype inFlightInput = 0;
+    bool secretQueued = false; // pendingInput holds secret bytes
     QString error;
     bool closing = false, completed = false, notified = false;
     int exitCode = -1;
@@ -161,14 +164,25 @@ bool PtyProcess::start(const QString& program, const QStringList& arguments, int
     std::thread writer([state] {
         for (;;) {
             QByteArray bytes;
+            bool secret = false;
             {
                 std::unique_lock lock(state->mutex);
                 state->changed.wait(lock, [&] { return state->closing || !state->pendingInput.isEmpty(); });
                 if (state->closing) break;
-                bytes = state->pendingInput.left(32768);
-                state->pendingInput.remove(0, bytes.size());
+                const qsizetype size = std::min<qsizetype>(state->pendingInput.size(), 32768);
+                secret = state->secretQueued;
+                if (secret) {
+                    // An explicit copy (left() may share the block), then zero the source.
+                    bytes = QByteArray(state->pendingInput.constData(), size);
+                    bitshell::core::secureConsume(state->pendingInput, size);
+                    if (state->pendingInput.isEmpty()) state->secretQueued = false;
+                } else {
+                    bytes = state->pendingInput.left(size);
+                    state->pendingInput.remove(0, size);
+                }
                 state->inFlightInput = bytes.size();
             }
+            const auto wipeChunk = qScopeGuard([&] { if (secret) bitshell::core::secureWipe(bytes); });
             qsizetype offset = 0;
             while (offset < bytes.size()) {
                 DWORD written = 0;
@@ -219,7 +233,9 @@ void PtyProcess::stop() {
         std::lock_guard lock(state->mutex);
         state->owner = nullptr;
         state->closing = true;
-        state->received.clear(); state->pendingInput.clear();
+        state->received.clear();
+        if (state->secretQueued) bitshell::core::secureWipe(state->pendingInput);
+        state->pendingInput.clear(); state->secretQueued = false;
     }
     state->changed.notify_all();
     TerminateJobObject(state->job, 1);
@@ -241,10 +257,30 @@ void PtyProcess::write(QByteArray data) {
         std::lock_guard lock(state->mutex);
         if (state->closing) return;
         rejected = data.size() > inputQueueLimit - state->pendingInput.size() - state->inFlightInput;
-        if (!rejected) state->pendingInput += data;
+        if (!rejected) {
+            if (state->secretQueued) bitshell::core::secureAppend(state->pendingInput, data);
+            else state->pendingInput += data;
+        }
     }
     if (rejected) emit errorOccurred(QStringLiteral("Terminal input queue limit exceeded; input was not sent."));
     else state->changed.notify_all();
+}
+bool PtyProcess::writeSecret(QByteArrayView data, bool) { // the mode is Unavailable here
+    const auto state = m_windows;
+    if (!state || data.isEmpty()) return false;
+    bool rejected = false;
+    {
+        std::lock_guard lock(state->mutex);
+        if (state->closing) return false;
+        rejected = data.size() > inputQueueLimit - state->pendingInput.size() - state->inFlightInput;
+        if (!rejected) {
+            bitshell::core::secureAppend(state->pendingInput, data);
+            state->secretQueued = true;
+        }
+    }
+    if (rejected) emit errorOccurred(QStringLiteral("Terminal input queue limit exceeded; input was not sent."));
+    else state->changed.notify_all();
+    return !rejected;
 }
 bool PtyProcess::canWrite(qsizetype bytes) const {
     const auto state = m_windows;
@@ -259,6 +295,10 @@ bool PtyProcess::isRunning() const {
     return !state->closing && !state->completed;
 }
 qint64 PtyProcess::processId() const { return m_windows ? qint64(m_windows->pid) : -1; }
+// ConPTY keeps the console mode to itself.
+void PtyProcess::setSampleMode(bool) {}
+core::TtyMode PtyProcess::lastReadMode() const { return core::TtyMode::Unavailable; }
+core::TtyMode PtyProcess::readMode() const { return core::TtyMode::Unavailable; }
 void PtyProcess::setEraseCharacter(char value) { m_eraseCharacter = value == '\x08' ? '\x08' : '\x7f'; }
 char PtyProcess::eraseCharacter() const { return m_eraseCharacter; }
 void PtyProcess::setError(QString* destination, const QString& message) { if (destination) *destination = message; }

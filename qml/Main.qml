@@ -46,6 +46,7 @@ ApplicationWindow {
             routeManager: routeManager,
             folderConnectionDialog: folderConnection,
             sshKeyManager: sshKeyManager,
+            credentialManager: credentialManager,
             aboutDialog: aboutDialog,
             commandPalette: commandPaletteLoader
         }
@@ -62,6 +63,7 @@ ApplicationWindow {
         || (routeManager.item !== null && routeManager.item.visible)
         || (folderConnection.item !== null && folderConnection.item.visible)
         || (sshKeyManager.item !== null && sshKeyManager.item.visible)
+        || (credentialManager.item !== null && credentialManager.item.visible)
         || (aboutDialog.item !== null && aboutDialog.item.visible)
 
     function openCommandPalette(initialQuery) {
@@ -118,6 +120,15 @@ ApplicationWindow {
         if (action.type === "settings") { ensureOverlay("settingsDrawer").openSection(action.target); return }
         if (action.type === "routes") { ensureOverlay("routeManager").openManager(); return }
         if (action.type === "keys") { ensureOverlay("sshKeyManager").openManager(); return }
+        if (action.type === "credentials") { ensureOverlay("credentialManager").openManager(); return }
+        if (action.type === "bindCredential" || action.type === "unbindCredential") {
+            const terminal = terminalPane.activeTerminal
+            if (terminal) {
+                if (action.type === "bindCredential") terminal.bindCredential(action.target)
+                else terminal.unbindCredential()
+            }
+            return
+        }
         if (action.type === "uiTheme") {
             if (AppSettings.darkAppearance) AppSettings.uiThemeId = action.target
             else AppSettings.uiLightThemeId = action.target
@@ -165,6 +176,8 @@ ApplicationWindow {
             ensureOverlay("settingsDrawer").openSection("Profile")
         else if (startupOverlay === "keys")
             ensureOverlay("sshKeyManager").openManager()
+        else if (startupOverlay === "credentials")
+            ensureOverlay("credentialManager").openManager()
         else if (startupOverlay === "about")
             ensureOverlay("aboutDialog").openAbout()
         else if (startupOverlay === "rule")
@@ -394,6 +407,7 @@ ApplicationWindow {
         active: false
         sourceComponent: SessionEditorDialog {
             onKeysRequested: root.ensureOverlay("sshKeyManager").openManager()
+            onCredentialsRequested: root.ensureOverlay("credentialManager").openManager()
         }
     }
 
@@ -411,6 +425,7 @@ ApplicationWindow {
     Loader { id: routeManager; active: false; sourceComponent: RouteManager {} }
     Loader { id: folderConnection; active: false; sourceComponent: FolderConnectionDialog {} }
     Loader { id: sshKeyManager; active: false; sourceComponent: SshKeyManager {} }
+    Loader { id: credentialManager; active: false; sourceComponent: CredentialManager {} }
     Loader { id: aboutDialog; active: false; sourceComponent: AboutDialog {} }
 
     CommandPaletteActions { id: paletteActions }

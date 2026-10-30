@@ -2,6 +2,7 @@
 #include <bitshell/terminal/TerminalView.h>
 #include <bitshell/core/Platform.h>
 #include <QCoreApplication>
+#include <QKeyEvent>
 #include <QUuid>
 
 namespace bitshell::terminal {
@@ -32,7 +33,10 @@ public:
     static quint64 localPromptGeneration(const TerminalView& terminal) { return terminal.m_localPromptGeneration; }
     static qint64 processId(const TerminalView& terminal) { return terminal.m_process.processId(); }
     static bool localSshPending(const TerminalView& terminal) { return !terminal.m_pendingLocalSshCommand.isEmpty(); }
-    static bool passwordHandoffActive(const TerminalView& terminal) { return terminal.m_passwordBroker != nullptr; }
+    // A saved secret is waiting to answer this tab's login prompt.
+    static bool passwordHandoffActive(const TerminalView& terminal) {
+        return terminal.m_credential != nullptr || terminal.m_passwordBroker != nullptr;
+    }
     static void resetLocalScreen(TerminalView& terminal) { terminal.resetTerminal(); }
     static bool localKeyConsumed(const TerminalView& terminal, int key) { return terminal.m_consumedLocalSshKeys.contains(key); }
     static QVariantMap sshConnectionSummary(const QVariantMap& profile, const QString& mode) {
@@ -94,6 +98,45 @@ public:
     static QFont font(const TerminalView& terminal) { return terminal.terminalFont(); }
     static bool startFixture(TerminalView& terminal, const QString& script, QString& error) {
         return terminal.m_process.start(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), script}, terminal.m_columns, terminal.m_rows, &error);
+    }
+    static void useCredentials(TerminalView& terminal, core::SecretVault& vault, const QString& path) {
+        terminal.m_credentialVault = &vault;
+        terminal.m_credentialPath = path;
+    }
+    // The saved-session path of launchSshProfile, with a script in place of ssh.
+    // notice is the non-blocking message shown when a secret cannot be used.
+    static void prepareCredential(TerminalView& terminal, const QVariantMap& profile, QVariantMap& effective, QString& notice) {
+        terminal.prepareCredential(profile, effective, notice);
+    }
+    static bool startCredentialFixture(TerminalView& terminal, const QVariantMap& profile, const QString& script,
+                                       QString& error, QVariantMap* effective = nullptr, QString* notice = nullptr) {
+        QVariantMap prepared;
+        QString message;
+        terminal.prepareCredential(profile, prepared, message);
+        if (effective) *effective = prepared;
+        if (notice) *notice = message;
+        if (!startFixture(terminal, script, error)) { terminal.releaseCredential(); return false; }
+        terminal.armPreparedCredential();
+        return true;
+    }
+    static QVariantMap lastSshProfile(const TerminalView& terminal) { return terminal.m_lastSshProfile; }
+    static bool credentialArmed(const TerminalView& terminal) { return terminal.m_credential != nullptr; }
+    // What the shell-integration path records when the user types ssh in a tab.
+    static void noteTypedSsh(TerminalView& terminal, const QVariantMap& requested) {
+        terminal.setCurrentSshConnection(TerminalView::sshConnectionSummary(requested, QStringLiteral("local")));
+    }
+    // A key press through the view's real input path.
+    static void press(TerminalView& terminal, Qt::Key key, const QString& text = {}) {
+        QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier, text);
+        terminal.keyPressEvent(&event);
+    }
+    static int boundCredentialMs(const TerminalView& terminal) { return terminal.m_boundCredentialMs; }
+    static void setBoundCredentialMs(TerminalView& terminal, int ms) { terminal.m_boundCredentialMs = ms; }
+    // Replaces the PTY's mode samples, as if read on another platform or terminal.
+    static void forceTtyMode(TerminalView& terminal, std::optional<core::TtyMode> mode) { terminal.m_forcedTtyMode = mode; }
+    static core::TtyMode liveTtyMode(const TerminalView& terminal) { return terminal.m_process.readMode(); }
+    static void beforeCheckedSecretWrite(TerminalView& terminal, std::function<void()> hook) {
+        terminal.m_beforeCheckedSecretWrite = std::move(hook);
     }
 };
 }

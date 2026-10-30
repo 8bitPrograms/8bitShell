@@ -215,7 +215,17 @@ std::expected<SshSecurity::Command, QString> SshSecurity::command(const QVariant
     const bool password = resolvedProfile.value(QStringLiteral("authenticationMode")) == QStringLiteral("password");
     if (transport != Transport::Terminal)
         result.arguments << (password ? QStringLiteral("-oBatchMode=no") : QStringLiteral("-oBatchMode=yes"));
-    if (password)
+    // A terminal login can also be keyboard-interactive (password, then a 2FA
+    // code the user types). The saved password is typed into the matched
+    // password prompt by TerminalView, once. Auxiliary transports have no
+    // terminal and answer through the askpass helper, which accepts only
+    // OpenSSH's own password prompt, so they stay password-only.
+    if (password && transport == Transport::Terminal)
+        result.arguments << QStringLiteral("-oPreferredAuthentications=keyboard-interactive,password")
+                         << QStringLiteral("-oPubkeyAuthentication=no")
+                         << QStringLiteral("-oKbdInteractiveAuthentication=yes")
+                         << QStringLiteral("-oNumberOfPasswordPrompts=1");
+    else if (password)
         result.arguments << QStringLiteral("-oPreferredAuthentications=password")
                          << QStringLiteral("-oPubkeyAuthentication=no")
                          << QStringLiteral("-oKbdInteractiveAuthentication=no")

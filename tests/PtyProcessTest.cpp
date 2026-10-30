@@ -11,9 +11,20 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <bitshell/core/SecureMemory.h>
 #include <bitshell/terminal/PtyProcess.h>
 
+namespace bitshell::terminal {
+// Exposes the PTY write queue: every byte of its block, spare capacity included.
+class PtyProcessTestAccess {
+public:
+    static QByteArray queueBlock(const PtyProcess& p) { return core::allocatedBytes(p.m_writeBuffer).toByteArray(); }
+    static qsizetype queued(const PtyProcess& p) { return p.m_writeBuffer.size(); }
+};
+}
+
 using bitshell::terminal::PtyProcess;
+using bitshell::terminal::PtyProcessTestAccess;
 
 class PtyProcessTest final : public QObject {
     Q_OBJECT
@@ -23,6 +34,58 @@ private slots:
     void doesNotInheritApplicationDescriptors();
     void rejectsInvalidArgumentsAndBoundsInput();
     void interactiveBashFlushesHistoryAtEveryPrompt();
+    void writtenSecretLeavesNoBytesInTheQueue();
+    void stoppedSecretLeavesNoBytesInTheQueue();
+    // Each read samples the child's terminal mode before dataReceived.
+    void sampledModeFollowsTheChildsStty() {
+        using bitshell::core::TtyMode;
+        PtyProcess process; QByteArray output; QList<TtyMode> modes; QString error;
+        connect(&process, &PtyProcess::dataReceived, this, [&](const QByteArray& bytes) {
+            output += bytes;
+            modes << process.lastReadMode();
+        });
+        QCOMPARE(process.lastReadMode(), TtyMode::Failed); // not sampling
+        process.setSampleMode(true);
+        QVERIFY2(process.start(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), QStringLiteral(
+            "stty -echo; printf S; IFS= read -r x; stty raw; printf R; dd bs=1 count=1 2>/dev/null >/dev/null;"
+            "stty -raw echo; printf C; IFS= read -r x; stty -echo -icrnl; printf G; IFS= read -r x")}, 80, 24, &error), qPrintable(error));
+        // Each marker is the child's only output until the test answers, so
+        // the latest read's sample is the mode the marker was written in.
+        QTRY_VERIFY(output.contains('S'));
+        QCOMPARE(modes.last(), TtyMode::SecretRead);
+        QCOMPARE(process.readMode(), TtyMode::SecretRead);
+        process.write("\n");
+        QTRY_VERIFY(output.contains('R'));
+        QCOMPARE(modes.last(), TtyMode::Raw);
+        QCOMPARE(process.readMode(), TtyMode::Raw);
+        process.write("x");
+        QTRY_VERIFY(output.contains('C'));
+        QCOMPARE(modes.last(), TtyMode::Cooked);
+        QCOMPARE(process.readMode(), TtyMode::Cooked);
+        process.write("\n");
+        QTRY_VERIFY(output.contains('G'));
+        QCOMPARE(modes.last(), TtyMode::SecretReadGarbled);
+        QCOMPARE(process.readMode(), TtyMode::SecretReadGarbled);
+        // A checked secret write needs SecretRead now.
+        QVERIFY(!process.writeSecret("pw\n", true));
+        QVERIFY(process.writeSecret("pw\n"));
+        // Nor behind input still queued: a child that doesn't read lets the
+        // PTY fill, and the rest of a large write() waits in the queue.
+        QVERIFY2(process.start(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), QStringLiteral("stty -echo; printf S; sleep 5")},
+            80, 24, &error), qPrintable(error));
+        output.clear();
+        QTRY_VERIFY(output.contains('S'));
+        QCOMPARE(process.readMode(), TtyMode::SecretRead);
+        process.write(QByteArray(512 * 1024, 'a'));
+        QVERIFY(PtyProcessTestAccess::queued(process) > 0);
+        const qsizetype queued = PtyProcessTestAccess::queued(process);
+        QVERIFY(!process.writeSecret("pw\n", true));
+        QCOMPARE(PtyProcessTestAccess::queued(process), queued);
+        process.setSampleMode(false);
+        QCOMPARE(process.lastReadMode(), TtyMode::Failed);
+        process.stop();
+        QCOMPARE(process.readMode(), TtyMode::Failed);
+    }
     void startingDirectoryIsPerProcess() {
         QTemporaryDir directory; QVERIFY(directory.isValid());
         const auto original = QDir::currentPath();
@@ -180,6 +243,48 @@ void PtyProcessTest::interactiveBashFlushesHistoryAtEveryPrompt() {
     }
     QVERIFY2(history.contains("BIT8SHELL_HISTORY_SYNC_OK"), history.constData());
     process.stop();
+}
+
+namespace {
+const QByteArray ptySecret = "TOPSECRET-xyz\r";
+bool holdsSecret(const QByteArray& block) { return block.contains("TOPSECRET") || block.contains("SECRET-xyz"); }
+// A child that reads nothing for a moment, so input queues (EAGAIN), then
+// drains everything.
+bool startStalledReader(PtyProcess& process, QString& error) {
+    return process.start(QStringLiteral("/bin/sh"),
+        {QStringLiteral("-c"), QStringLiteral("stty raw -echo; sleep 1; exec cat >/dev/null")}, 80, 24, &error);
+}
+}
+
+// QC B3: a secret that waits in the queue behind a paste and drains in
+// partial writes leaves none of its bytes in the queue's block.
+void PtyProcessTest::writtenSecretLeavesNoBytesInTheQueue() {
+    PtyProcess process; QString error;
+    QVERIFY2(startStalledReader(process, error), qPrintable(error));
+    process.write(QByteArray(512 * 1024, 'a'));
+    QVERIFY(PtyProcessTestAccess::queued(process) > 0); // the kernel buffer filled: EAGAIN
+    process.writeSecret(ptySecret);
+    process.write(QByteArray(64 * 1024, 'b')); // typed after it, so the secret drains mid-queue
+    QVERIFY(holdsSecret(PtyProcessTestAccess::queueBlock(process))); // the hook sees it while queued
+    QTRY_COMPARE_WITH_TIMEOUT(PtyProcessTestAccess::queued(process), 0, 10000);
+    const QByteArray block = PtyProcessTestAccess::queueBlock(process);
+    QVERIFY(!holdsSecret(block));
+    process.stop();
+    QVERIFY(!holdsSecret(PtyProcessTestAccess::queueBlock(process)));
+}
+
+// QC B3: stopping with the secret still queued zeroes it too.
+void PtyProcessTest::stoppedSecretLeavesNoBytesInTheQueue() {
+    PtyProcess process; QString error;
+    QVERIFY2(startStalledReader(process, error), qPrintable(error));
+    process.write(QByteArray(512 * 1024, 'a'));
+    process.writeSecret(ptySecret);
+    QVERIFY(holdsSecret(PtyProcessTestAccess::queueBlock(process)));
+    process.stop();
+    QCOMPARE(PtyProcessTestAccess::queued(process), 0);
+    const QByteArray block = PtyProcessTestAccess::queueBlock(process);
+    QVERIFY(!block.isEmpty()); // the block was kept, zeroed, not freed unzeroed
+    QVERIFY(!holdsSecret(block));
 }
 
 QTEST_GUILESS_MAIN(PtyProcessTest)

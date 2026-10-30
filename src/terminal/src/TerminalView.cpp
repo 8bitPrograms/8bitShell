@@ -1,4 +1,5 @@
 #include <bitshell/terminal/TerminalView.h>
+#include "TerminalViewCredentials.h"
 #include <bitshell/terminal/LocalSshCommand.h>
 #include <bitshell/core/LocalProfileStore.h>
 #include <bitshell/core/SshSecurity.h>
@@ -136,6 +137,7 @@ TerminalView::TerminalView(QQuickItem* parent)
             // backend. A stopped process must never retain a searchable host
             // or a dispatch waiting for a prompt that can no longer arrive.
             stopPasswordBroker();
+            releaseCredential();
             setCurrentSshConnection({});
             cancelPendingLocalSsh();
             m_localPromptActive = false;
@@ -267,6 +269,8 @@ TerminalView::~TerminalView() {
     disconnect(&m_process, nullptr, this, nullptr);
     stopPasswordBroker();
     m_pendingPasswordBroker.reset();
+    m_keyLoader.reset();
+    m_credential.reset();
     for (const auto& connection : m_windowConnections) disconnect(connection);
     m_windowConnections.clear();
     m_process.stop();
@@ -827,31 +831,24 @@ void TerminalView::confirmX11(bool accepted) {
     else if (!accepted) setStatusText(QStringLiteral("X11 connection cancelled."));
 }
 void TerminalView::launchSshProfile(const QVariantMap& profile) {
-    const auto command = core::SshSecurity::command(profile, core::SshSecurity::Transport::Terminal);
-    if (!command) { setStatusText(command.error()); return; }
-    QProcessEnvironment environment;
-    std::unique_ptr<core::PasswordBroker> broker;
-    if (!core::PasswordStore::binding(profile).isEmpty()) {
-        auto password = core::PasswordStore::read(profile);
-        if (!password) { setStatusText(password.error()); return; }
-        if (!password->isEmpty()) {
-            broker = std::make_unique<core::PasswordBroker>();
-            const auto additions = broker->start(profile, *password);
-            password->fill('\0'); password->clear();
-            if (!additions) { setStatusText(additions.error()); return; }
-            environment = *additions;
-        }
-    }
+    // Without a credential or saved password, effective is the profile unchanged.
+    // A secret that cannot be read never blocks the launch: ssh prompts as usual.
+    QVariantMap effective;
+    QString notice;
+    prepareCredential(profile, effective, notice);
+    const auto command = core::SshSecurity::command(effective, core::SshSecurity::Transport::Terminal);
+    if (!command) { m_preparedCredential.reset(); setStatusText(command.error()); return; }
     const QString name = profile.value(QStringLiteral("name")).toString().trimmed();
     const QString label = name.isEmpty() ? command->target : name;
     if (launchProcess(command->program,
                   command->arguments,
                   label,
-                  QStringLiteral("Connecting to %1…").arg(command->target), true, false, {}, environment)) {
-        m_passwordBroker = std::move(broker);
+                  QStringLiteral("Connecting to %1…").arg(command->target), true, false, {}, {})) {
+        armPreparedCredential();
+        if (!notice.isEmpty()) setStatusText(notice);
         m_lastSshProfile = profile;
-        setCurrentSshConnection(sshConnectionSummary(profile, QStringLiteral("managed")));
-    }
+        setCurrentSshConnection(sshConnectionSummary(effective, QStringLiteral("managed")));
+    } else m_preparedCredential.reset();
 }
 
 void TerminalView::stopPasswordBroker() {
@@ -890,6 +887,8 @@ QVariantMap TerminalView::sshConnectionSummary(const QVariantMap& profile, const
 void TerminalView::setCurrentSshConnection(const QVariantMap& connection) {
     if (m_currentSshConnection == connection) return;
     m_currentSshConnection = connection;
+    if (m_credential && connection.value(QStringLiteral("mode")) == QStringLiteral("local")) [[unlikely]]
+        targetBoundCredential(connection);
     // OSC callbacks run under the terminal mutex. Publish after that batch so
     // palette listeners can safely inspect the terminal or change focus.
     if (m_processingOutput) m_currentSshConnectionNotificationPending = true;
@@ -922,6 +921,7 @@ void TerminalView::sendText(const QString& text) {
         ++m_localSshRefreshSerial;
         clearLocalSshQuery();
         if (text.contains(u'\r') || text.contains(u'\n') || text.contains(QChar(3))) m_localPromptActive = false;
+        if (m_credential) [[unlikely]] noteCredentialInput();
         m_process.write(text.toUtf8());
     }
 }
@@ -1012,10 +1012,15 @@ bool TerminalView::runLocalSsh(const QVariantMap& profile, const QVariantMap& ex
     std::unique_ptr<core::PasswordBroker> broker;
     const bool passwordMode = profile.value(QStringLiteral("authenticationMode")) == QStringLiteral("password");
     const bool wsl = m_integratedShellKind == QStringLiteral("wsl-bash");
+    QString notice;
     if (passwordMode && !wsl && !core::PasswordStore::binding(profile).isEmpty()) {
         auto password = core::PasswordStore::read(profile);
-        if (!password) { emit localSshError(password.error()); return false; }
-        if (!password->isEmpty()) {
+        // An unreadable keyring never blocks ssh: the user types the password.
+        if (!password)
+            notice = QStringLiteral("Could not read the saved password: %1 Type it yourself.").arg(password.error());
+        else if (password->isEmpty() && core::PasswordStore::has(profile))
+            notice = QStringLiteral("The saved password is missing from %1. Type it yourself.").arg(core::PasswordStore::backendName());
+        else if (!password->isEmpty()) {
             broker = std::make_unique<core::PasswordBroker>();
             const auto additions = broker->start(profile, *password);
             password->fill('\0'); password->clear();
@@ -1034,7 +1039,7 @@ bool TerminalView::runLocalSsh(const QVariantMap& profile, const QVariantMap& ex
     m_pendingLocalSshCommand = *command;
     m_pendingPasswordBroker = std::move(broker);
     m_pendingLocalSshStatus = passwordMode && wsl
-        ? QStringLiteral("WSL SSH: enter the password in this terminal; saved Windows passwords are not forwarded to WSL.") : QString{};
+        ? QStringLiteral("WSL SSH: enter the password in this terminal; saved Windows passwords are not forwarded to WSL.") : notice;
     m_pendingLocalSshConnection = sshConnectionSummary(profile, QStringLiteral("local"));
     m_pendingLocalSshShellKind = m_integratedShellKind;
     m_pendingLocalSshGeneration = m_localPromptGeneration;
@@ -1134,6 +1139,7 @@ void TerminalView::processShellMarker(int command, VTermStringFragment fragment)
         // Return to the authenticated local prompt expires a native child's
         // capability even when it never requested a password.
         stopPasswordBroker();
+        if (m_credential) m_credential->restartPending = true;
         if (m_currentSshConnection.value(QStringLiteral("mode")) == QStringLiteral("local"))
             setCurrentSshConnection({});
         VTermPos cursor{};
@@ -1197,6 +1203,7 @@ void TerminalView::writePaste(const QString& text, bool appendEnter) {
     ++m_localSshRefreshSerial;
     clearLocalSshQuery();
     if (appendEnter || text.contains(u'\r') || text.contains(u'\n')) m_localPromptActive = false;
+    if (m_credential) [[unlikely]] noteCredentialInput();
     QMutexLocker locker(&m_terminalMutex);
     vterm_keyboard_start_paste(m_terminal);
     m_process.write(text.toUtf8());
@@ -1559,6 +1566,15 @@ void TerminalView::keyPressEvent(QKeyEvent* event) {
             event->accept();
             return;
         }
+    }
+    // A keystroke ends a bound credential's window unless ssh is waiting for
+    // the user. Noted before the Enter below names a typed ssh's target, so
+    // the Enter that launches it never closes the new window.
+    if (m_credential) [[unlikely]] {
+        const int key = event->key();
+        if (key != Qt::Key_Shift && key != Qt::Key_Control && key != Qt::Key_Alt && key != Qt::Key_Meta
+            && key != Qt::Key_AltGr && key != Qt::Key_CapsLock)
+            noteCredentialInput();
     }
     // Suggestions describe rendered, settled input. Invalidate immediately on
     // typing so a fast Enter never selects a host from an older visible line.
@@ -1987,6 +2003,7 @@ void TerminalView::handleProcessData(const QByteArray& data) {
                || m_statusText == QStringLiteral("Starting local profile…")) {
         setStatusText(QStringLiteral("Local ready"));
     }
+    if (m_credential) [[unlikely]] answerCredentialPrompt(data);
     // The cursor is an overlay. Upload the terminal texture only when cells changed.
     if (searchWasActive || oldScrollOffset != m_scrollOffset) update();
     else if (m_contentDirty || m_dirtyRows.count(true) > 0) requestSceneUpdate();
@@ -1994,6 +2011,7 @@ void TerminalView::handleProcessData(const QByteArray& data) {
 
 void TerminalView::handleProcessFinished(int exitCode) {
     stopPasswordBroker();
+    releaseCredential();
     setCurrentSshConnection({});
     cancelPendingLocalSsh();
     m_localPromptActive = false;

@@ -18,6 +18,7 @@
 #include <bitshell/core/PasswordStore.h>
 #include <bitshell/core/SessionStore.h>
 #include <bitshell/terminal/TerminalView.h>
+#include "FakeKeychain.h"
 #include "TerminalTestAccess.h"
 
 #include <memory>
@@ -465,6 +466,14 @@ int main(int argc, char* argv[]) {
 #endif
     QGuiApplication app(argc, argv);
     if (QFontDatabase::families().isEmpty()) return EXIT_FAILURE;
+    // No OS keychain here (CI has no Secret Service): use the in-process test
+    // keychain so the remember-password paths still run instead of skipping.
+    // A bus can exist with no Secret Service behind it, so probe a real write.
+    FakeKeychain keychain;
+    const auto probe = QStringLiteral("password-ui-test-probe");
+    if (!PasswordStore::available() || !PasswordStore::writeSecret(probe, "probe")) PasswordStore::useTestKeychain(&keychain);
+    else (void)PasswordStore::removeSecret(probe);
+    qInfo("Keychain: %s", qPrintable(PasswordStore::backendName()));
     PasswordUiTest test;
     return QTest::qExec(&test, argc, argv);
 }

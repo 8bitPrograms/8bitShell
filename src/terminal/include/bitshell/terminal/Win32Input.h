@@ -2,6 +2,9 @@
 #include <QByteArray>
 #include <QByteArrayView>
 #include <QKeyEvent>
+#include <bitshell/core/SecureMemory.h>
+
+#include <utility>
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -94,11 +97,16 @@ public:
             else if (vk == 27) text = QString(QChar(27));
         }
         if (text.isEmpty()) text = QString(QChar(0));
+        // A typed secret passes through here: one block that never grows, and
+        // the character code's temporary is zeroed (the caller zeroes text's).
         QByteArray result;
-        for (const QChar ch : text)
-            result += QByteArrayLiteral("\x1b[") + QByteArray::number(vk) + ';' + QByteArray::number(scan)
-                + ';' + QByteArray::number(ch.unicode()) + (pressed ? QByteArrayLiteral(";1;") : QByteArrayLiteral(";0;"))
-                + QByteArray::number(state) + QByteArrayLiteral(";1_");
+        result.reserve(text.size() * 32);
+        for (const QChar ch : std::as_const(text)) { // non-const iteration would detach a copy
+            QByteArray code = QByteArray::number(ch.unicode());
+            result.append("\x1b[").append(QByteArray::number(vk)).append(';').append(QByteArray::number(scan))
+                .append(';').append(code).append(pressed ? ";1;" : ";0;").append(QByteArray::number(state)).append(";1_");
+            core::secureWipe(code);
+        }
         return result;
     }
 private:

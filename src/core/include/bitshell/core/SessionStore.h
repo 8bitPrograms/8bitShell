@@ -132,6 +132,7 @@ private:
         bool compression = false;
         QString backspaceMode = QStringLiteral("default");
         QString authenticationMode = QStringLiteral("auto");
+        QString credential; // CredentialStore id; secrets stay in the keychain
         QVariantMap connection{{QStringLiteral("mode"), QStringLiteral("direct")}};
     };
 

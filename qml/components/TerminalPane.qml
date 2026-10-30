@@ -64,7 +64,8 @@ Rectangle {
             rows.push({id: tab.tabId, name: tab.label, host: connection.host || (remote ? saved.host || tab.host : ""),
                 user: connection.user || (remote ? saved.user || tab.user : ""), port: connection.port || saved.port || tab.port,
                 gateway: connection.gateway || (saved.psmp ? saved.psmp.route.host : ""), localName: local.name || tab.label,
-                active: index === currentIndex, running: Boolean(terminal && terminal.running)})
+                active: index === currentIndex, running: Boolean(terminal && terminal.running),
+                credential: terminal ? terminal.credentialName : "", credentialBound: Boolean(terminal && terminal.credentialBound)})
         }
         return rows
     }
