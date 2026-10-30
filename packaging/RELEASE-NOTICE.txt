@@ -14,3 +14,7 @@ That workflow gate does not change the GPL grant.
 The application is not a certified or independently audited security product.
 Windows packages bundle the Microsoft Visual C++ runtime DLLs app-locally and
 the Win32-OpenSSH client tools; neither needs a separate OS install.
+Upstream PowerShell/Win32-OpenSSH publishes its GitHub releases only as
+preview, beta or pre-release builds; 10.4.0.0p1 is marked "preview-release
+(non-production ready)". 8bitShell pins that build by SHA-256 in
+packaging/openssh.lock.json.

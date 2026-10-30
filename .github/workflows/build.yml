@@ -235,7 +235,17 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-linux-${{ matrix.arch }}
-          path: dist/release/*
+          # Release asset types only, as in the native job; finalize rejects anything else.
+          path: |
+            dist/release/*.zip
+            dist/release/*.tar.gz
+            dist/release/*.msi
+            dist/release/*.exe
+            dist/release/*.dmg
+            dist/release/*.deb
+            dist/release/*.rpm
+            dist/release/*.pkg.tar.zst
+            dist/release/manifest-*.json
           if-no-files-found: error
   legacy-windows:
     needs: plan
@@ -254,7 +264,17 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-windows-x86
-          path: dist/release/*
+          # Release asset types only, as in the native job; finalize rejects anything else.
+          path: |
+            dist/release/*.zip
+            dist/release/*.tar.gz
+            dist/release/*.msi
+            dist/release/*.exe
+            dist/release/*.dmg
+            dist/release/*.deb
+            dist/release/*.rpm
+            dist/release/*.pkg.tar.zst
+            dist/release/manifest-*.json
           if-no-files-found: error
   draft-release:
     needs: [plan, native, legacy-linux, legacy-windows]

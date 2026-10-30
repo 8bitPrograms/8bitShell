@@ -24,7 +24,7 @@ class ReleaseContractTests(unittest.TestCase):
   with zipfile.ZipFile(out/(name+".zip")) as z:self.assertEqual(z.read(name+"/bin/payload"),b"portable-runtime")
  def test_installer_catalog_has_one_download_per_system_cpu_kind(self):
   out=self.t/"release";out.mkdir();entries=[]
-  for system,cpu,ext in [("windows","x64","zip"),("windows","arm64","msi"),("linux","x64","tar.gz"),("linux","arm64","tar.gz"),("macos","arm64","zip")]:
+  for system,cpu,ext in [("windows","x64","zip"),("windows","arm64","msi"),("linux","x64","tar.gz"),("linux","arm64","tar.gz"),("windows","x86","zip")]:
    name=f'{d.config()["app"]}-1.0.0-{system}-{cpu}.{ext}';p=out/name;p.write_bytes((system+cpu).encode())
    entries.append(dict(name=name,sha256=d.digest(p),os=system,arch=cpu,version="1.0.0",experimental=False,glibc="2.35" if system=="linux" else None))
   (out/"manifest-test.json").write_text(json.dumps(entries))
@@ -35,7 +35,7 @@ class ReleaseContractTests(unittest.TestCase):
   self.assertIn('example/test-repository',(out/"install.sh").read_text())
   self.assertNotIn("'example/test-repository'|OWNER",(out/"install.sh").read_text())
  def test_tampered_candidate_is_not_finalized(self):
-  out=self.t/"release";out.mkdir();p=out/"payload.zip";p.write_bytes(b"original")
+  out=self.t/"release";out.mkdir();p=out/f'{d.config()["app"]}-1.0.0-windows-x64.zip';p.write_bytes(b"original")
   e=dict(name=p.name,sha256=d.digest(p),os="windows",arch="x64",version="1.0.0",experimental=False,glibc=None)
   (out/"manifest-test.json").write_text(json.dumps([e]));p.write_bytes(b"tampered")
   with self.assertRaises(ValueError):d.finalize(out,"example/test")
@@ -47,9 +47,44 @@ class ReleaseContractTests(unittest.TestCase):
   names=[e["name"] for e in json.loads((out/"manifest-windows-arm64.json").read_text())]
   self.assertEqual(sorted(names),sorted(assets))
   # Upload only what CI's upload-artifact globs keep: the stray files are left behind.
-  for n in (base+".wixpdb",base+".msi.log",base+".zip.part"):(out/n).unlink()
+  # The other target's MSI has no manifest here, and finalize refuses unlisted files.
+  for n in (base+".wixpdb",base+".msi.log",base+".zip.part",f"{app}-1.0.0-windows-x64.msi"):(out/n).unlink()
   d.finalize(out,"example/test")
   self.assertEqual(len(json.loads((out/"release-manifest.json").read_text())["assets"]),4)
+ def test_finalize_refuses_files_no_manifest_lists(self):
+  out=self.t/"release";out.mkdir();app=d.config()["app"];base=f"{app}-1.0.0-windows-x86"
+  for n in (base+".zip",base+".msi",base+".wixpdb",base+".pdb",base+".msi.log",base+".zip.part"):(out/n).write_bytes(n.encode())
+  d.stamp_assets(out,"windows","x86")
+  with self.assertRaisesRegex(ValueError,"refusing to publish: .*wixpdb"):d.finalize(out,"example/test")
+  self.assertFalse((out/"SHA256SUMS.txt").exists())
+ def test_finalize_refuses_stray_zips_that_match_the_upload_globs(self):
+  # Each of these passes the *.zip upload glob, so finalize is what keeps it out.
+  app=d.config()["app"];base=f"{app}-1.0.0-windows-x64"
+  strays=(f"{app}-0.9.0-windows-x64.zip",base+"-debug.zip",f"{app}-1.0.0-windows-riscv64.zip")
+  for stray in strays:
+   with self.subTest(unlisted=stray):
+    out=self.t/("unlisted-"+stray);out.mkdir()
+    for n in (base+".zip",base+".msi",stray):(out/n).write_bytes(n.encode())
+    d.stamp_assets(out,"windows","x64")
+    self.assertNotIn(stray,[e["name"] for e in json.loads((out/"manifest-windows-x64.json").read_text())])
+    with self.assertRaisesRegex(ValueError,"refusing to publish: "+stray.replace(".","[.]")+"$"):d.finalize(out,"example/test")
+    self.assertFalse((out/"SHA256SUMS.txt").exists())
+  # A stray manifest cannot vouch for them either: only this version's configured names pass.
+  for stray,version,system,cpu in ((strays[0],"0.9.0","windows","x64"),(strays[0],"1.0.0","windows","x64"),(strays[1],"1.0.0","windows","x64"),(strays[2],"1.0.0","windows","riscv64")):
+   with self.subTest(listed=stray,version=version):
+    out=self.t/(f"listed-{version}-"+stray);out.mkdir()
+    for n in (base+".zip",stray):(out/n).write_bytes(n.encode())
+    d.stamp_assets(out,"windows","x64");p=out/stray
+    (out/f"manifest-stray-{system}-{cpu}.json").write_text(json.dumps([dict(name=stray,sha256=d.digest(p),size=p.stat().st_size,os=system,arch=cpu,version=version,glibc=None,experimental=False)]))
+    with self.assertRaisesRegex(ValueError,"Not a 1[.]0[.]0 release asset, refusing to publish: "+stray.replace(".","[.]")):d.finalize(out,"example/test")
+    self.assertFalse((out/"SHA256SUMS.txt").exists())
+ def test_finalize_accepts_every_configured_asset_name(self):
+  # The name check must not refuse anything build.py legitimately stamps.
+  c=d.config();out=self.t/"release";out.mkdir();entries=[]
+  for n in sorted(d.release_asset_names(c,"1.0.0")):
+   p=out/n;p.write_bytes(n.encode());entries.append(dict(name=n,sha256=d.digest(p),os="source" if n.endswith("source.tar.gz") else n.split("-")[2],arch="all",version="1.0.0",experimental=False,glibc=None))
+  (out/"manifest-all.json").write_text(json.dumps(entries));d.finalize(out,"example/test")
+  self.assertEqual(len(json.loads((out/"release-manifest.json").read_text())["assets"]),len(entries))
  def test_release_architecture_overrides_are_validated(self):
   with patch.dict(os.environ,RELEASE_ARCH="made-up"):
    with self.assertRaises(ValueError):d.arch()
