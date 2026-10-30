@@ -31,7 +31,7 @@ class QMouseEvent;
 class QPainter;
 class QWheelEvent;
 
-namespace bitshell::core { class PasswordBroker; }
+namespace bitshell::core { class PasswordBroker; class SecretVault; }
 
 namespace bitshell::terminal {
 
@@ -55,6 +55,9 @@ class TerminalView : public QQuickPaintedItem {
     Q_PROPERTY(QString title READ title NOTIFY titleChanged)
     Q_PROPERTY(QString activeTarget READ activeTarget NOTIFY activeTargetChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
+    // Name of the credential answering prompts in this tab; never a secret.
+    Q_PROPERTY(QString credentialName READ credentialName NOTIFY credentialChanged)
+    Q_PROPERTY(bool credentialBound READ credentialBound NOTIFY credentialChanged)
     Q_PROPERTY(bool logEnabled READ logEnabled WRITE setLogEnabled NOTIFY logEnabledChanged)
     Q_PROPERTY(QString logFilePath READ logFilePath NOTIFY logFilePathChanged)
     Q_PROPERTY(QString logError READ logError NOTIFY logErrorChanged)
@@ -126,6 +129,8 @@ public:
     [[nodiscard]] QString title() const;
     [[nodiscard]] QString activeTarget() const;
     [[nodiscard]] QString statusText() const;
+    [[nodiscard]] QString credentialName() const;
+    [[nodiscard]] bool credentialBound() const;
 
     [[nodiscard]] bool logEnabled() const;
     void setLogEnabled(bool enabled);
@@ -176,6 +181,9 @@ public:
                                      const QString& user = {},
                                      int port = 22);
     Q_INVOKABLE void startSshProfile(const QVariantMap& profile);
+    // Lets a saved credential answer the next ssh typed in this tab.
+    Q_INVOKABLE bool bindCredential(const QString& id);
+    Q_INVOKABLE void unbindCredential();
     Q_INVOKABLE void confirmX11(bool accepted);
     Q_INVOKABLE void sendText(const QString& text);
     Q_INVOKABLE void pasteClipboard();
@@ -251,6 +259,7 @@ signals:
     void zoomRequested(int steps);
     void bell();
     void rawOutputReceived(const QByteArray& data);
+    void credentialChanged();
 
 protected:
     void geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) override;
@@ -314,6 +323,18 @@ private:
                        bool interactiveShell = false, const QString& workingDirectory = {},
                        const QProcessEnvironment& environmentOverrides = {});
     void stopPasswordBroker();
+
+    // Credential profiles (TerminalViewCredentials.cpp).
+    struct CredentialSession;
+    struct KeyLoader;
+    // Resolves profile["credential"] into m_preparedCredential and the
+    // profile ssh should actually use. False with an error when unusable.
+    void prepareCredential(const QVariantMap& profile, QVariantMap& effective, QString& notice);
+    void prepareSavedPassword(const QVariantMap& profile, QString& notice);
+    void armPreparedCredential();
+    void releaseCredential();
+    void answerCredentialPrompt(const QByteArray& data);
+    [[nodiscard]] bitshell::core::SecretVault& credentialVault() const;
     void rebuildSearchMatchesLocked(bool incremental = false);
     void revealCurrentSearchMatchLocked();
     void paintContent(QPainter* painter, const QBitArray* dirtyRows = nullptr);
@@ -366,6 +387,13 @@ private:
     PtyProcess m_process;
     std::unique_ptr<bitshell::core::PasswordBroker> m_passwordBroker;
     std::unique_ptr<bitshell::core::PasswordBroker> m_pendingPasswordBroker;
+    // Null unless a credential flow is armed; the output path tests only this.
+    std::unique_ptr<CredentialSession> m_credential;
+    std::unique_ptr<CredentialSession> m_preparedCredential;
+    std::unique_ptr<KeyLoader> m_keyLoader;
+    quint64 m_credentialGeneration = 0;
+    bitshell::core::SecretVault* m_credentialVault = nullptr; // null: OS keychain
+    QString m_credentialPath;                                 // empty: default file
     bitshell::core::SessionLogger m_logger;
     bitshell::core::HighlightEngine m_highlightEngine;
     QList<bitshell::core::HighlightRule> m_highlightRules =
