@@ -265,13 +265,13 @@ void PtyProcess::write(QByteArray data) {
     if (rejected) emit errorOccurred(QStringLiteral("Terminal input queue limit exceeded; input was not sent."));
     else state->changed.notify_all();
 }
-void PtyProcess::writeSecret(QByteArrayView data) {
+bool PtyProcess::writeSecret(QByteArrayView data, bool) { // the mode is Unavailable here
     const auto state = m_windows;
-    if (!state || data.isEmpty()) return;
+    if (!state || data.isEmpty()) return false;
     bool rejected = false;
     {
         std::lock_guard lock(state->mutex);
-        if (state->closing) return;
+        if (state->closing) return false;
         rejected = data.size() > inputQueueLimit - state->pendingInput.size() - state->inFlightInput;
         if (!rejected) {
             bitshell::core::secureAppend(state->pendingInput, data);
@@ -280,6 +280,7 @@ void PtyProcess::writeSecret(QByteArrayView data) {
     }
     if (rejected) emit errorOccurred(QStringLiteral("Terminal input queue limit exceeded; input was not sent."));
     else state->changed.notify_all();
+    return !rejected;
 }
 bool PtyProcess::canWrite(qsizetype bytes) const {
     const auto state = m_windows;
@@ -294,6 +295,10 @@ bool PtyProcess::isRunning() const {
     return !state->closing && !state->completed;
 }
 qint64 PtyProcess::processId() const { return m_windows ? qint64(m_windows->pid) : -1; }
+// ConPTY keeps the console mode to itself.
+void PtyProcess::setSampleMode(bool) {}
+core::TtyMode PtyProcess::lastReadMode() const { return core::TtyMode::Unavailable; }
+core::TtyMode PtyProcess::readMode() const { return core::TtyMode::Unavailable; }
 void PtyProcess::setEraseCharacter(char value) { m_eraseCharacter = value == '\x08' ? '\x08' : '\x7f'; }
 char PtyProcess::eraseCharacter() const { return m_eraseCharacter; }
 void PtyProcess::setError(QString* destination, const QString& message) { if (destination) *destination = message; }

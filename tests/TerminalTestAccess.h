@@ -132,5 +132,11 @@ public:
     }
     static int boundCredentialMs(const TerminalView& terminal) { return terminal.m_boundCredentialMs; }
     static void setBoundCredentialMs(TerminalView& terminal, int ms) { terminal.m_boundCredentialMs = ms; }
+    // Replaces the PTY's mode samples, as if read on another platform or terminal.
+    static void forceTtyMode(TerminalView& terminal, std::optional<core::TtyMode> mode) { terminal.m_forcedTtyMode = mode; }
+    static core::TtyMode liveTtyMode(const TerminalView& terminal) { return terminal.m_process.readMode(); }
+    static void beforeCheckedSecretWrite(TerminalView& terminal, std::function<void()> hook) {
+        terminal.m_beforeCheckedSecretWrite = std::move(hook);
+    }
 };
 }

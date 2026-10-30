@@ -7,6 +7,8 @@
 #include <QStringList>
 #include <QProcessEnvironment>
 
+#include <bitshell/core/CredentialFlow.h>
+
 #include <memory>
 
 class QSocketNotifier;
@@ -36,7 +38,11 @@ public:
     // Queues a secret (a typed password). The queue keeps it in one block and
     // zeroes every byte once written or dropped. Later write()s into the same
     // queue are handled the same way until it drains; other input has no cost.
-    void writeSecret(QByteArrayView data);
+    // requireSecretRead (POSIX): queue nothing and return false unless the mode,
+    // read again now, is SecretRead and no earlier input is still queued.
+    // A part the PTY can't take at once is written later, unchecked.
+    // Windows ignores it. False also when nothing could be queued.
+    bool writeSecret(QByteArrayView data, bool requireSecretRead = false);
     [[nodiscard]] bool canWrite(qsizetype bytes) const;
     void setEraseCharacter(char value);
     [[nodiscard]] char eraseCharacter() const;
@@ -47,6 +53,14 @@ public:
 
     [[nodiscard]] bool isRunning() const;
     [[nodiscard]] qint64 processId() const;
+    // While on, each read samples the terminal's mode before dataReceived is
+    // emitted (one tcgetattr per read). Windows can't tell: Unavailable.
+    void setSampleMode(bool on);
+    // The mode sampled at the read behind the latest dataReceived; Failed
+    // while sampling is off.
+    [[nodiscard]] core::TtyMode lastReadMode() const;
+    // The mode now.
+    [[nodiscard]] core::TtyMode readMode() const;
 
 signals:
     void dataReceived(const QByteArray& data);
@@ -76,6 +90,8 @@ private:
     QByteArray m_writeBuffer;
     bool m_secretQueued = false; // m_writeBuffer holds secret bytes
     char m_eraseCharacter = '\x7f';
+    bool m_sampleMode = false;
+    core::TtyMode m_lastReadMode = core::TtyMode::Failed;
 #endif
     bool m_interactiveShell = false;
     QString m_shellIntegrationToken;

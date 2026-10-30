@@ -27,6 +27,8 @@ using core::CredentialFlow;
 constexpr int ownedDeadlineMs = 120 * 1000;
 // Lifetime of a key that an ad hoc tab adds to ssh-agent.
 constexpr int agentKeySeconds = 300;
+// Quiet output after a prompt read with echo off before it is answered.
+constexpr int confirmMs = 25;
 
 void wipe(QByteArray& bytes) { core::secureWipe(bytes); }
 
@@ -121,6 +123,29 @@ QString promptWord(CredentialFlow::Prompt prompt) {
     case CredentialFlow::Prompt::Passphrase: return QStringLiteral("key passphrase");
     case CredentialFlow::Prompt::Username: return QStringLiteral("username");
     default: return QStringLiteral("answer");
+    }
+}
+
+// Why a flow stopped, after "Stopped using <credential>: ".
+QString stopReasonText(const CredentialFlow& flow) {
+    using Reason = CredentialFlow::StopReason;
+    const Reason reason = flow.stopReason();
+    if (flow.answered() && (reason == Reason::Typed || reason == Reason::Finished || reason == Reason::Budget
+                            || reason == Reason::Output))
+        return QStringLiteral("the login finished");
+    switch (reason) {
+    case Reason::Typed: return QStringLiteral("you typed before ssh asked");
+    case Reason::Finished: return QStringLiteral("the login finished without a password prompt");
+    case Reason::NotReading: return QStringLiteral("a password prompt appeared but ssh wasn't reading it");
+    case Reason::RawTerminal:
+        return QStringLiteral("this tab's terminal is in raw mode (tmux, screen or similar), so ssh's prompt can't be told apart");
+    case Reason::ModeFailed: return QStringLiteral("the terminal mode couldn't be read");
+    case Reason::Garbled: return QStringLiteral("the terminal would garble the answer (-icrnl or istrip)");
+    case Reason::Budget:
+        return QStringLiteral("more than %1 KiB arrived first").arg(CredentialFlow::preambleBytes / 1024);
+    case Reason::Foreign: return QStringLiteral("something other than ssh asked for input");
+    case Reason::Output: return QStringLiteral("output arrived before the password prompt");
+    default: return QStringLiteral("its login window closed");
     }
 }
 
@@ -233,10 +258,15 @@ void TerminalView::armPreparedCredential() {
     if (!m_preparedCredential) return;
     const bool owned = m_preparedCredential->flow.scope() == CredentialFlow::Scope::OwnedSsh;
     m_credential = std::move(m_preparedCredential);
+    // A bound tab samples the mode from its typed ssh on.
+    m_process.setSampleMode(owned);
     const auto generation = ++m_credentialGeneration;
+    const int deadlineMs = owned ? ownedDeadlineMs : m_boundCredentialMs;
     // One timer per arming, not a poll: it only ends a flow that never settled.
-    QTimer::singleShot(owned ? ownedDeadlineMs : m_boundCredentialMs, this, [this, generation] {
-        if (m_credential && m_credentialGeneration == generation) releaseCredential();
+    QTimer::singleShot(deadlineMs, this, [this, generation, deadlineMs] {
+        if (!m_credential || m_credentialGeneration != generation) return;
+        stopCredential(m_credential->flow.answered() ? QStringLiteral("the login finished")
+            : QStringLiteral("no password prompt within %1 minutes").arg(qMax(1, deadlineMs / 60000)));
     });
     emit credentialChanged();
 }
@@ -245,8 +275,16 @@ void TerminalView::releaseCredential() {
     m_preparedCredential.reset();
     if (!m_credential) return;
     ++m_credentialGeneration;
+    ++m_credentialConfirmGeneration;
+    m_process.setSampleMode(false);
     m_credential.reset();
     emit credentialChanged();
+}
+
+void TerminalView::stopCredential(const QString& reason) {
+    if (!m_credential) return;
+    setStatusText(QStringLiteral("Stopped using %1: %2.").arg(sourceOf(m_credential->name), reason));
+    releaseCredential();
 }
 
 bool TerminalView::bindCredential(const QString& id) {
@@ -325,7 +363,7 @@ bool TerminalView::bindCredential(const QString& id) {
         CredentialFlow::Scope::Shell, resolved->id, resolved->name, QString{});
     m_preparedCredential->user = user;
     armPreparedCredential();
-    setStatusText(QStringLiteral("Credential '%1' will answer the password prompt of the next ssh %2@host you type in this tab, within %3 minutes.")
+    setStatusText(QStringLiteral("Credential '%1' will answer ssh's password prompt for %2 on the next ssh you type in this tab, within %3 minutes.")
         .arg(m_credential->name, user).arg(m_boundCredentialMs / 60000));
     return true;
 }
@@ -341,6 +379,7 @@ void TerminalView::targetBoundCredential(const QVariantMap& connection) {
     auto user = session.user;
     if (user.isEmpty()) user = connection.value(QStringLiteral("user")).toString();
     if (!host.isEmpty() && !user.isEmpty()) session.flow.setTarget(user.toUtf8(), host.toUtf8());
+    m_process.setSampleMode(!session.flow.targetLogin().isEmpty());
 }
 
 void TerminalView::unbindCredential() {
@@ -352,30 +391,55 @@ void TerminalView::unbindCredential() {
 
 // A keystroke that ends a bound tab's window also lets go of the credential.
 void TerminalView::noteCredentialInput() {
-    if (m_credential->flow.noteUserInput()) releaseCredential();
+    if (m_credential->flow.noteUserInput()) stopCredential(stopReasonText(m_credential->flow));
 }
 
 // Runs only while a flow is armed. The flow keeps a 256-byte tail, so the
 // cost is one bounded scan of each chunk's end.
 void TerminalView::answerCredentialPrompt(const QByteArray& data) {
     auto& session = *m_credential;
+    ++m_credentialConfirmGeneration; // a pending fill's timer will not send
+    const auto mode = m_forcedTtyMode.value_or(m_process.lastReadMode());
     if (session.restartPending) {
         session.restartPending = false;
         session.flow.restart();
+        if (session.flow.scope() == CredentialFlow::Scope::Shell) m_process.setSampleMode(false);
     }
-    auto step = session.flow.feed(QByteArrayView(data));
+    applyCredentialStep(session.flow.feed(QByteArrayView(data), mode));
+}
+
+void TerminalView::applyCredentialStep(CredentialFlow::Step step, bool confirmed) {
+    auto& session = *m_credential;
     switch (step.action) {
     case CredentialFlow::Action::None:
         return;
+    case CredentialFlow::Action::Pending: {
+        // Sent only if no output follows and ssh still reads with echo off.
+        const auto generation = ++m_credentialConfirmGeneration;
+        QTimer::singleShot(confirmMs, this, [this, generation] {
+            if (!m_credential || m_credentialConfirmGeneration != generation) return;
+            applyCredentialStep(m_credential->flow.confirm(m_forcedTtyMode.value_or(m_process.readMode())), true);
+        });
+        return;
+    }
     case CredentialFlow::Action::Send: {
         // step.bytes is the only copy unless ConPTY wants key records.
         QByteArray encoded;
         if (m_win32Input.enabled()) encoded = win32Typed(step.bytes);
         const QByteArray& input = m_win32Input.enabled() ? encoded : step.bytes;
         const bool fits = m_process.canWrite(input.size());
-        if (fits) m_process.writeSecret(input);
+        if (fits && confirmed && m_beforeCheckedSecretWrite) [[unlikely]] m_beforeCheckedSecretWrite();
+        // A confirmed answer is written only if ssh still reads with echo off
+        // right now (ssh killed at its prompt would leave it to the shell).
+        const bool written = fits && m_process.writeSecret(input, confirmed);
         wipe(encoded);
         wipe(step.bytes);
+        if (fits && !written) {
+            stopCredential(m_process.readMode() == core::TtyMode::SecretReadGarbled
+                ? QStringLiteral("the terminal would garble the answer (-icrnl or istrip)")
+                : QStringLiteral("ssh stopped reading before the answer was sent"));
+            return;
+        }
         if (!fits) {
             setStatusText(QStringLiteral("The terminal input queue is full. Type the %1 yourself.").arg(promptWord(step.prompt)));
             forceActiveFocus();
@@ -385,9 +449,17 @@ void TerminalView::answerCredentialPrompt(const QByteArray& data) {
         return;
     }
     case CredentialFlow::Action::HandToUser: {
-        const auto source = sourceOf(session.name);
+        auto source = sourceOf(session.name);
         forceActiveFocus();
-        if (step.prompt == CredentialFlow::Prompt::OneTimeCode)
+        if (!step.asker.isEmpty()) {
+            const auto asker = QString::fromUtf8(step.asker);
+            source[0] = source[0].toUpper();
+            setStatusText(QStringLiteral("ssh asked for %1. %2 is only for %3 (host aliases from ~/.ssh/config aren't matched). Type it yourself.")
+                .arg(step.prompt == CredentialFlow::Prompt::Passphrase ? QStringLiteral("the passphrase of %1").arg(asker)
+                     : step.prompt == CredentialFlow::Prompt::Password ? QStringLiteral("%1's password").arg(asker)
+                     : QStringLiteral("an answer for %1").arg(asker),
+                     source, QString::fromUtf8(session.flow.targetLogin())));
+        } else if (step.prompt == CredentialFlow::Prompt::OneTimeCode)
             setStatusText(QStringLiteral("Type the verification code yourself. The login continues after it."));
         else if (step.prompt == CredentialFlow::Prompt::Unknown || step.prompt == CredentialFlow::Prompt::HostKey
                  || step.prompt == CredentialFlow::Prompt::Other)
@@ -399,13 +471,15 @@ void TerminalView::answerCredentialPrompt(const QByteArray& data) {
         return;
     }
     case CredentialFlow::Action::Stop:
-        if (step.rejected) {
-            forceActiveFocus();
-            setStatusText(QStringLiteral("The server asked again, so the saved %1 from %2 was wrong. It was not sent twice. Continue yourself.")
-                .arg(promptWord(step.prompt), sourceOf(session.name)));
-        }
         // The window is closed for good: the secrets are wiped now, in owned
         // and bound tabs alike, not when the tab or its timer ends.
+        if (!step.rejected) {
+            stopCredential(stopReasonText(session.flow));
+            return;
+        }
+        forceActiveFocus();
+        setStatusText(QStringLiteral("The server asked again, so the saved %1 from %2 was wrong. It was not sent twice. Continue yourself.")
+            .arg(promptWord(step.prompt), sourceOf(session.name)));
         releaseCredential();
         return;
     }

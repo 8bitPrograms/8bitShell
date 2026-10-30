@@ -9,6 +9,8 @@ using bitshell::core::CredentialSecrets;
 using Action = CredentialFlow::Action;
 using Prompt = CredentialFlow::Prompt;
 using Scope = CredentialFlow::Scope;
+using Reason = CredentialFlow::StopReason;
+using bitshell::core::TtyMode;
 
 namespace {
 CredentialSecrets secrets(bool passphrase = false) {
@@ -308,16 +310,17 @@ private slots:
         }
     }
 
-    // ProxyJump: the jump host's prompt is part of the login. The credential
-    // answers it only for its own user there; the target is answered either way.
+    // ProxyJump: the jump host's prompt is part of the login but never
+    // answered, even for the credential's own user there; the target is.
     void proxyJumpWithMatchingCredential() {
         auto owned = flowFor(Scope::OwnedSsh); auto& flow = *owned;
         flow.setJumpHosts("JDoe@Jump.example:2222, bastion");
         auto step = flow.feed("jdoe@jump.example's password: ");
-        QCOMPARE(step.action, Action::Send);
-        QCOMPARE(step.bytes, QByteArray("s3cret pw\r"));
+        QCOMPARE(step.action, Action::HandToUser);
+        QCOMPARE(step.asker, QByteArray("jdoe@jump.example"));
+        QVERIFY(step.bytes.isEmpty());
         step = flow.feed("\r\n(jdoe@bastion) Password: "); // ssh picks bastion's user
-        QCOMPARE(step.action, Action::Send);
+        QCOMPARE(step.action, Action::HandToUser);
         QCOMPARE(flow.feed("\r\nThe authenticity of host 'host (<no hostip for proxy command>)' can't be established.\r\n"
                            "ED25519 key fingerprint is SHA256:abc.\r\n").action, Action::None);
         QCOMPARE(flow.feed("Are you sure you want to continue connecting (yes/no/[fingerprint])? ").action, Action::HandToUser);
@@ -325,13 +328,6 @@ private slots:
         step = flow.feed("jdoe@host's password: ");
         QCOMPARE(step.action, Action::Send);
         QCOMPARE(step.bytes, QByteArray("s3cret pw\r"));
-        // A jump that asks again was refused: no second try.
-        auto again = flowFor(Scope::OwnedSsh);
-        again->setJumpHosts("jump.example");
-        QCOMPARE(again->feed("jdoe@jump.example's password: ").action, Action::Send);
-        step = again->feed("\r\nPermission denied, please try again.\r\njdoe@jump.example's password: ");
-        QCOMPARE(step.action, Action::Stop);
-        QVERIFY(step.rejected);
     }
 
     void proxyJumpWithOtherUserIsLeftToTheUser() {
@@ -360,19 +356,20 @@ private slots:
         CredentialFlow flow(secrets(), Scope::Shell);
         flow.setTarget("jdoe", "db01");
         // Blank filler: only the byte budget can end the window here.
-        const auto step = flow.feed(QByteArray(9000 - prompt.size(), ' ') + prompt);
+        const auto step = flow.feed(QByteArray(17 * 1024 - prompt.size(), ' ') + prompt);
         QVERIFY(step.action != Action::Send);
         QVERIFY(step.bytes.isEmpty());
+        QCOMPARE(flow.stopReason(), Reason::Budget);
         CredentialFlow fits(secrets(), Scope::Shell);
         fits.setTarget("jdoe", "db01");
-        QCOMPARE(fits.feed(QByteArray(CredentialFlow::shellWindowBytes - prompt.size(), ' ') + prompt).action, Action::Send);
+        QCOMPARE(fits.feed(QByteArray(CredentialFlow::preambleBytes - prompt.size(), ' ') + prompt).action, Action::Send);
     }
 
     // QC B2: a bound round expires by output size, not only by time.
     void boundWindowExpiresByBytes() {
         CredentialFlow flow(secrets(), Scope::Shell);
         flow.setTarget("jdoe", "db01");
-        QCOMPARE(flow.feed(QByteArray(CredentialFlow::shellWindowBytes, 'm')).action, Action::None);
+        QCOMPARE(flow.feed(QByteArray(CredentialFlow::preambleBytes, 'm')).action, Action::None);
         const auto step = flow.feed("m");
         QCOMPARE(step.action, Action::Stop);
         QVERIFY(!step.rejected);
@@ -439,6 +436,207 @@ private slots:
         const auto step = flow.feed("\r\nBad passphrase, try again for /run/user/1000/8bitShell-key/id: ");
         QCOMPARE(step.action, Action::Stop);
         QVERIFY(step.rejected);
+    }
+
+    // Round 5: a prompt is answered only when read with echo off (ssh's
+    // readpassphrase), and only after confirm() sees ssh still reading.
+    void feedModeMatrix_data() {
+        QTest::addColumn<int>("mode");
+        QTest::addColumn<int>("action");
+        QTest::addColumn<int>("reason");
+        QTest::newRow("unavailable") << int(TtyMode::Unavailable) << int(Action::Send) << int(Reason::None);
+        QTest::newRow("secret read") << int(TtyMode::SecretRead) << int(Action::Pending) << int(Reason::None);
+        QTest::newRow("cooked") << int(TtyMode::Cooked) << int(Action::Stop) << int(Reason::NotReading);
+        QTest::newRow("raw") << int(TtyMode::Raw) << int(Action::Stop) << int(Reason::RawTerminal);
+        QTest::newRow("failed") << int(TtyMode::Failed) << int(Action::Stop) << int(Reason::ModeFailed);
+        QTest::newRow("garbled") << int(TtyMode::SecretReadGarbled) << int(Action::Stop) << int(Reason::Garbled);
+    }
+    void feedModeMatrix() {
+        QFETCH(int, mode);
+        QFETCH(int, action);
+        QFETCH(int, reason);
+        for (const Scope scope : {Scope::OwnedSsh, Scope::Shell}) {
+            auto flow = flowFor(scope, false, "db01");
+            const auto step = flow->feed("\rjdoe@db01's password: ", TtyMode(mode));
+            QCOMPARE(int(step.action), action);
+            QCOMPARE(step.bytes.isEmpty(), step.action != Action::Send);
+            // An owned ssh's PTY starts cooked, so raw there means logged in.
+            const bool ownedRaw = scope == Scope::OwnedSsh && TtyMode(mode) == TtyMode::Raw;
+            QCOMPARE(int(flow->stopReason()), ownedRaw ? int(Reason::Finished) : reason);
+            QVERIFY(!step.rejected);
+        }
+    }
+
+    void confirmModeMatrix_data() {
+        QTest::addColumn<int>("mode");
+        QTest::addColumn<int>("action");
+        QTest::addColumn<int>("reason");
+        QTest::newRow("secret read") << int(TtyMode::SecretRead) << int(Action::Send) << int(Reason::None);
+        QTest::newRow("cooked") << int(TtyMode::Cooked) << int(Action::Stop) << int(Reason::NotReading);
+        QTest::newRow("raw") << int(TtyMode::Raw) << int(Action::Stop) << int(Reason::NotReading);
+        QTest::newRow("unavailable") << int(TtyMode::Unavailable) << int(Action::Stop) << int(Reason::NotReading);
+        QTest::newRow("failed") << int(TtyMode::Failed) << int(Action::Stop) << int(Reason::ModeFailed);
+        QTest::newRow("garbled") << int(TtyMode::SecretReadGarbled) << int(Action::Stop) << int(Reason::Garbled);
+    }
+    void confirmModeMatrix() {
+        QFETCH(int, mode);
+        QFETCH(int, action);
+        QFETCH(int, reason);
+        auto flow = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(flow->confirm(TtyMode::SecretRead).action, Action::None); // nothing pending
+        QCOMPARE(flow->feed("\r(jdoe@db01) Password: ", TtyMode::SecretRead).action, Action::Pending);
+        auto step = flow->confirm(TtyMode(mode));
+        QCOMPARE(int(step.action), action);
+        QCOMPARE(int(flow->stopReason()), reason);
+        if (step.action == Action::Send) QCOMPARE(step.bytes, QByteArray("s3cret pw\r"));
+        QVERIFY(flow->answered() == (step.action == Action::Send));
+        // A pending fill is confirmed once.
+        QCOMPARE(flow->confirm(TtyMode::SecretRead).action, Action::None);
+    }
+
+    // Any output after a pending prompt clears it; the last prompt wins.
+    void newOutputClearsThePendingFill() {
+        auto flow = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(flow->feed("jdoe@db01's password: ", TtyMode::SecretRead).action, Action::Pending);
+        QCOMPARE(flow->feed("\x1b[0m", TtyMode::SecretRead).action, Action::Pending); // judged afresh
+        QCOMPARE(flow->feed("x", TtyMode::SecretRead).action, Action::None);
+        QCOMPARE(flow->confirm(TtyMode::SecretRead).action, Action::None);
+        QVERIFY(!flow->stopped());
+        // A fake prompt read while cooked is never sent, whatever the mode later.
+        auto fake = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(fake->feed("jdoe@db01's password: ", TtyMode::Cooked).action, Action::Stop);
+        QCOMPARE(fake->confirm(TtyMode::SecretRead).action, Action::None);
+        QCOMPARE(fake->feed("\rjdoe@db01's password: ", TtyMode::SecretRead).action, Action::None);
+    }
+
+    // M1 relies on ssh's leading "\r": it clears the line, so a fake prompt
+    // followed by "\r" is not a prompt, even read with echo off.
+    void carriageReturnEndsAFakePrompt() {
+        auto flow = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(flow->feed("jdoe@db01's password: \r", TtyMode::SecretRead).action, Action::None);
+        QCOMPARE(flow->confirm(TtyMode::SecretRead).action, Action::None);
+        QVERIFY(!flow->stopped());
+        auto split = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(split->feed("jdoe@db01's password: ", TtyMode::SecretRead).action, Action::Pending);
+        QCOMPARE(split->feed("\r", TtyMode::SecretRead).action, Action::None);
+        QCOMPARE(split->confirm(TtyMode::SecretRead).action, Action::None);
+        QVERIFY(!split->answered());
+    }
+
+    // ssh -T never goes raw: in a bound tab, after the answer, the first cooked
+    // line that is not the login's ends the window. "Permission denied" is ssh's.
+    void cookedLineAfterTheAnswerEndsABoundWindow() {
+        auto flow = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(flow->feed("Banner\r\n\rjdoe@db01's password: ", TtyMode::SecretRead).action, Action::Pending);
+        QCOMPARE(flow->confirm(TtyMode::SecretRead).action, Action::Send);
+        QCOMPARE(flow->feed("\r\n", TtyMode::Cooked).action, Action::None);
+        QCOMPARE(flow->feed("Welcome to db01\r\n", TtyMode::Cooked).action, Action::Stop);
+        QCOMPARE(flow->stopReason(), Reason::Finished);
+        auto wrong = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(wrong->feed("\rjdoe@db01's password: ", TtyMode::SecretRead).action, Action::Pending);
+        QCOMPARE(wrong->confirm(TtyMode::SecretRead).action, Action::Send);
+        QCOMPARE(wrong->feed("\r\nPermission denied, please try again.\r\n", TtyMode::Cooked).action, Action::None);
+        const auto step = wrong->feed("\rjdoe@db01's password: ", TtyMode::SecretRead);
+        QCOMPARE(step.action, Action::Stop);
+        QVERIFY(step.rejected);
+    }
+
+    // Another login's prompt read cooked or raw is a remote's output: ignored,
+    // with no hand-over and no wait for the user.
+    void foreignPromptOutsideASecretReadIsIgnored() {
+        for (const TtyMode mode : {TtyMode::Cooked, TtyMode::Raw}) {
+            for (const char* prompt : {"\rqa@jump's password: ", "\rEnter passphrase for key '/x/id': "}) {
+                auto flow = flowFor(Scope::Shell, false, "db01");
+                const auto step = flow->feed(prompt, mode);
+                QCOMPARE(step.action, Action::None);
+                QVERIFY(step.asker.isEmpty());
+                QVERIFY(!flow->stopped());
+                QVERIFY(flow->noteUserInput()); // nobody is waiting for the user
+            }
+        }
+    }
+
+    // S2: raw after any other mode since the target means the login is over.
+    void rawAfterAnotherModeStops() {
+        auto key = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(key->feed("\r\n", TtyMode::Raw).action, Action::None); // the shell's own line editor
+        QCOMPARE(key->feed("Warning: Permanently added 'db01'\r\n", TtyMode::Cooked).action, Action::None);
+        QCOMPARE(key->feed("Welcome\r\n", TtyMode::Raw).action, Action::Stop);
+        QCOMPARE(key->stopReason(), Reason::Finished);
+        QVERIFY(!key->answered());
+        // An owned ssh starts on a cooked PTY: its first raw read ends the window.
+        auto owned = flowFor(Scope::OwnedSsh, false, "db01");
+        QCOMPARE(owned->feed("Welcome\r\n", TtyMode::Raw).action, Action::Stop);
+        QCOMPARE(owned->stopReason(), Reason::Finished);
+        // After an answer.
+        auto login = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(login->feed("\rjdoe@db01's password: ", TtyMode::SecretRead).action, Action::Pending);
+        QCOMPARE(login->confirm(TtyMode::SecretRead).action, Action::Send);
+        QCOMPARE(login->feed("\r\n", TtyMode::Cooked).action, Action::None);
+        QCOMPARE(login->feed("$ jdoe@db01's password: ", TtyMode::Raw).action, Action::Stop);
+        QCOMPARE(login->stopReason(), Reason::Finished);
+        QVERIFY(login->answered());
+        // Raw at every read (tmux): lines pass, a target prompt stops.
+        auto tmux = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(tmux->feed("ssh db01\r\nBanner\r\n", TtyMode::Raw).action, Action::None);
+        QCOMPARE(tmux->feed("jdoe@db01's password: ", TtyMode::Raw).action, Action::Stop);
+        QCOMPARE(tmux->stopReason(), Reason::RawTerminal);
+    }
+
+    // With the mode known, lines never close the window: banners, Duo text
+    // and "Code accepted." pass. Without it they do (N6).
+    void linesPassWhileTheModeIsKnown() {
+        auto flow = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(flow->feed("Authorized use only.\r\nDuo two-factor login for jdoe\r\n", TtyMode::Cooked).action, Action::None);
+        QCOMPARE(flow->feed("\r(jdoe@db01) Verification code: ", TtyMode::SecretRead).action, Action::HandToUser);
+        QCOMPARE(flow->feed("\r\nCode accepted.\r\n", TtyMode::Cooked).action, Action::None);
+        QCOMPARE(flow->feed("\r(jdoe@db01) Password: ", TtyMode::SecretRead).action, Action::Pending);
+        QCOMPARE(flow->confirm(TtyMode::SecretRead).action, Action::Send);
+        auto windows = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(windows->feed("hello\r\njdoe@db01's password: ").action, Action::Stop);
+        QCOMPARE(windows->stopReason(), Reason::Output);
+    }
+
+    // M2: a keyboard-interactive retry is byte-identical; the spent answer stops it.
+    void keyboardInteractiveRetryIsNotAnsweredTwice() {
+        auto flow = flowFor(Scope::OwnedSsh, false, "db01");
+        QCOMPARE(flow->feed("\r(jdoe@db01) Password: ", TtyMode::SecretRead).action, Action::Pending);
+        QCOMPARE(flow->confirm(TtyMode::SecretRead).action, Action::Send);
+        QCOMPARE(flow->feed("\r\n", TtyMode::Cooked).action, Action::None);
+        const auto step = flow->feed("\r(jdoe@db01) Password: ", TtyMode::SecretRead);
+        QCOMPARE(step.action, Action::Stop);
+        QVERIFY(step.rejected);
+        QCOMPARE(flow->stopReason(), Reason::Rejected);
+    }
+
+    // N7: bytes on the prompt's line after the answer never ask again.
+    void bytesAfterTheAnswerOnTheSameLine() {
+        auto flow = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(flow->feed("\rjdoe@db01's password: ", TtyMode::SecretRead).action, Action::Pending);
+        QCOMPARE(flow->confirm(TtyMode::SecretRead).action, Action::Send);
+        QCOMPARE(flow->feed("\x1b[K", TtyMode::SecretRead).action, Action::None);
+        QVERIFY(!flow->stopped());
+    }
+
+    // S3: ssh's prompts for another user@host or key go to the user; the
+    // window stays open for the target. Without the mode only ProxyJump hosts'.
+    void otherHostsGoToTheUser() {
+        for (const char* prompt : {"\rqa@jump's password: ", "\r(jdoe@jump) Password: ", "\rEnter passphrase for key '/x/id': "}) {
+            auto flow = flowFor(Scope::Shell, false, "db01");
+            const auto step = flow->feed(prompt, TtyMode::SecretRead);
+            QCOMPARE(step.action, Action::HandToUser);
+            QVERIFY(!step.asker.isEmpty());
+            QVERIFY(!flow->noteUserInput()); // the user answers it
+            QCOMPARE(flow->feed("\r\n\rjdoe@db01's password: ", TtyMode::SecretRead).action, Action::Pending);
+            QCOMPARE(flow->confirm(TtyMode::SecretRead).action, Action::Send);
+        }
+        auto key = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(key->feed("\rEnter passphrase for key '/x/id': ", TtyMode::SecretRead).asker, QByteArray("key '/x/id'"));
+        auto windows = flowFor(Scope::Shell, false, "db01");
+        QCOMPARE(windows->feed("qa@jump's password: ").action, Action::Stop);
+        auto hop = flowFor(Scope::Shell, false, "db01");
+        hop->setJumpHosts("jump");
+        QCOMPARE(hop->feed("qa@jump's password: ").action, Action::HandToUser);
     }
 
     void ordinaryOutputIsIgnored() {

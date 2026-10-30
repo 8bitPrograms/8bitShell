@@ -20,7 +20,9 @@
 #include <bitshell/terminal/ScrollbackLine.h>
 
 #include <deque>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <vterm.h>
@@ -333,7 +335,11 @@ private:
     void prepareSavedPassword(const QVariantMap& profile, QString& notice);
     void armPreparedCredential();
     void releaseCredential();
+    // Releases with "Stopped using <credential>: <reason>." as the status.
+    void stopCredential(const QString& reason);
     void answerCredentialPrompt(const QByteArray& data);
+    // confirmed: the step came from confirm(), so the write re-checks the mode.
+    void applyCredentialStep(bitshell::core::CredentialFlow::Step step, bool confirmed = false);
     void noteCredentialInput();
     void targetBoundCredential(const QVariantMap& connection);
     [[nodiscard]] bitshell::core::SecretVault& credentialVault() const;
@@ -394,6 +400,11 @@ private:
     std::unique_ptr<CredentialSession> m_preparedCredential;
     std::unique_ptr<KeyLoader> m_keyLoader;
     quint64 m_credentialGeneration = 0;
+    // Bumped by every output while armed: a pending fill's timer sends only
+    // if nothing arrived after its prompt.
+    quint64 m_credentialConfirmGeneration = 0;
+    std::optional<bitshell::core::TtyMode> m_forcedTtyMode; // tests only: replaces the PTY's samples
+    std::function<void()> m_beforeCheckedSecretWrite;        // tests only: runs between confirm() and the check
     bitshell::core::SecretVault* m_credentialVault = nullptr; // null: OS keychain
     QString m_credentialPath;                                 // empty: default file
     // A bound tab forgets its credential after this. Matches the ssh-agent

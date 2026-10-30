@@ -256,17 +256,24 @@ void PtyProcess::write(QByteArray data) {
     flushWriteBuffer();
 }
 
-void PtyProcess::writeSecret(QByteArrayView data) {
+bool PtyProcess::writeSecret(QByteArrayView data, bool requireSecretRead) {
     if (!isRunning() || data.isEmpty()) {
-        return;
+        return false;
     }
     if (data.size() > 1024 * 1024 - m_writeBuffer.size()) {
         emit errorOccurred(QStringLiteral("Terminal input exceeded the 1 MiB queue limit; input was not sent."));
-        return;
+        return false;
+    }
+    // Behind earlier input the secret would be written later, unchecked: refuse.
+    // A race remains between this tcgetattr and the write() below: a few
+    // microseconds, with no output in between.
+    if (requireSecretRead && (!m_writeBuffer.isEmpty() || readMode() != core::TtyMode::SecretRead)) {
+        return false;
     }
     core::secureAppend(m_writeBuffer, data);
     m_secretQueued = true;
     flushWriteBuffer();
+    return true;
 }
 
 void PtyProcess::discardWriteBuffer() {
@@ -307,6 +314,38 @@ qint64 PtyProcess::processId() const {
     return m_childPid;
 }
 
+void PtyProcess::setSampleMode(bool on) {
+    m_sampleMode = on;
+    m_lastReadMode = core::TtyMode::Failed;
+}
+
+core::TtyMode PtyProcess::lastReadMode() const {
+    return m_lastReadMode;
+}
+
+core::TtyMode PtyProcess::readMode() const {
+    termios attributes{};
+    if (m_masterFd < 0 || ::tcgetattr(m_masterFd, &attributes) != 0) {
+        return core::TtyMode::Failed;
+    }
+    // Once the child has exited, Linux reports the closed replica's last
+    // settings. WNOWAIT leaves the exit status for finishFromMaster().
+    siginfo_t info{};
+    if (m_childPid <= 0
+        || ::waitid(P_PID, static_cast<id_t>(m_childPid), &info, WEXITED | WNOHANG | WNOWAIT) != 0
+        || info.si_pid != 0) {
+        return core::TtyMode::Failed;
+    }
+    if ((attributes.c_lflag & ICANON) == 0) {
+        return core::TtyMode::Raw;
+    }
+    if ((attributes.c_lflag & ECHO) != 0) {
+        return core::TtyMode::Cooked;
+    }
+    return (attributes.c_iflag & ICRNL) == 0 || (attributes.c_iflag & ISTRIP) != 0
+        ? core::TtyMode::SecretReadGarbled : core::TtyMode::SecretRead;
+}
+
 void PtyProcess::handleReadyRead() {
     if (m_masterFd < 0) {
         return;
@@ -317,6 +356,7 @@ void PtyProcess::handleReadyRead() {
     for (int reads = 0; reads < 4 && m_masterFd >= 0; ++reads) {
         const ssize_t count = ::read(m_masterFd, buffer, sizeof(buffer));
         if (count > 0) {
+            if (m_sampleMode) [[unlikely]] m_lastReadMode = readMode();
             emit dataReceived(QByteArray(buffer, static_cast<qsizetype>(count)));
             continue;
         }
