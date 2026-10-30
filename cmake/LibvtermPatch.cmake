@@ -41,7 +41,7 @@ function(bitshell_patch_vterm_screen input output)
     replace_checked(
         "while(REFLOW && old_lineinfo && old_row >= 0 && old_lineinfo[old_row].continuation)"
         "while(REFLOW && old_lineinfo && old_row > 0 && old_lineinfo[old_row].continuation)")
-    # Wide glyph bounds handling from Vim 8.2.1353: https://github.com/vim/vim/commit/8b89614e69b9b2330539d0482e44f4724053e780
+    # Wide glyph bounds handling from Vim patch 8.2.1353, vim/vim@8b89614
     replace_checked(
         [=[    getcell(screen, pos.row, pos.col + col)->chars[0] = (uint32_t)-1;]=]
         [=[  {
@@ -50,7 +50,7 @@ function(bitshell_patch_vterm_screen input output)
       break;
     onecell->chars[0] = (uint32_t)-1;
   }]=])
-    # Resize cursor handling adapted from Vim 9.0.1049 (comments reworded): https://github.com/vim/vim/commit/67578e5bcf7404d40d42876b738b72e68add1a3e
+    # Resize cursor handling from Vim patch 9.0.1049, vim/vim@67578e5, comments reworded
     replace_checked(
         [=[  /* We really expect the cursor position to be set by now */
   if(active && (new_cursor.row == -1 || new_cursor.col == -1)) {
@@ -82,7 +82,7 @@ function(bitshell_patch_vterm_state input output)
         string(REPLACE "${before}" "${after}" state "${state}")
         set(state "${state}" PARENT_SCOPE)
     endfunction()
-    # REP cursor handling from Vim 9.2.0989: https://github.com/vim/vim/commit/785bb3e9b271eb377dbd4157ce281eac7f16a021
+    # REP cursor handling from Vim patch 9.2.0989, vim/vim@785bb3e
     replace_checked(
         [=[  case 0x62: { // REP - ECMA-48 8.3.103
     const int row_width = THISROWWIDTH(state);]=]
