@@ -22,15 +22,23 @@ struct CredentialSecrets {
 // prompt text. Pure: no timers, no I/O, no Qt objects. The caller feeds each
 // output chunk and acts on the returned step.
 //
+// Only OpenSSH's own prompts for the target user@host are answered:
+//   user@host's password:          (password authentication)
+//   (user@host) Password:          (keyboard-interactive, OpenSSH 8.4+)
+//   Enter passphrase for key '<keyPath>':
+// Anything else (sudo, su, a vault, a bare "Password:") never gets a secret.
 // One-time-code prompts are never answered. Every answer is sent at most once:
 // a prompt that asks for a spent answer means it was rejected, so the flow stops.
+// After an answer, the first line of output that is not part of the login, or
+// any prompt that is not ssh's, ends the flow: the login is over.
 class CredentialFlow {
 public:
-    // OwnedSsh: 8bitShell launched this ssh, so any password prompt is ours.
-    // Shell: a credential bound to a shell tab. Only an SSH password prompt for
-    // the bound user is answered, so sudo/su never receive the secret.
+    // OwnedSsh: 8bitShell launched this ssh. Shell: a credential bound to a
+    // shell tab; it answers only after the tab names a target (a typed ssh).
     enum class Scope : std::uint8_t { OwnedSsh, Shell };
-    enum class Prompt : std::uint8_t { None, OneTimeCode, Passphrase, Password, Username, Unknown };
+    // Unknown: an ssh prompt for the target that no saved answer covers.
+    // Other: a prompt that is not ssh's for the target. Never answered.
+    enum class Prompt : std::uint8_t { None, OneTimeCode, Passphrase, Password, Username, Unknown, Other };
     enum class Action : std::uint8_t { None, Send, HandToUser, Stop };
 
     struct Step {
@@ -47,6 +55,10 @@ public:
     static constexpr qint64 settledBytes = 4096;
     // Output allowed before any prompt in an owned ssh (banners, host-key text).
     static constexpr qint64 preambleBytes = 16384;
+    // Output allowed before the prompt in a bound shell tab, from the typed
+    // ssh to its password prompt. ssh prints a few hundred bytes at most
+    // (host-key question, warnings); a server banner fits too.
+    static constexpr qint64 shellWindowBytes = 8192;
 
     CredentialFlow(CredentialSecrets secrets, Scope scope);
     ~CredentialFlow();
@@ -54,8 +66,11 @@ public:
     CredentialFlow& operator=(const CredentialFlow&) = delete;
 
     Step feed(QByteArrayView chunk);
+    // The user@host that ssh names in its prompts. Compared case-insensitively.
+    // Without one, nothing is answered except an owned key's passphrase.
+    void setTarget(QByteArrayView user, QByteArrayView host);
     // Starts a new round with all answers available again (ad hoc tab, back
-    // at the local prompt). The secrets are kept.
+    // at the local prompt). The secrets are kept; a Shell flow drops its target.
     void restart();
 
     [[nodiscard]] bool stopped() const { return m_stopped; }
@@ -63,8 +78,8 @@ public:
     [[nodiscard]] Scope scope() const { return m_scope; }
 
     // Exposed for tests. Classifies one already-stripped prompt line.
-    [[nodiscard]] static Prompt classify(QByteArrayView line, Scope scope,
-                                         QByteArrayView user, QByteArrayView keyPath);
+    [[nodiscard]] static Prompt classify(QByteArrayView line, Scope scope, QByteArrayView user,
+                                         QByteArrayView host, QByteArrayView keyPath);
     // The last line of text with escape codes and trailing whitespace removed.
     [[nodiscard]] static QByteArray promptLine(QByteArrayView text);
 
@@ -73,9 +88,13 @@ private:
 
     void append(QByteArrayView chunk);
     [[nodiscard]] bool endsLikePrompt() const;
+    [[nodiscard]] bool leftLogin() const;
     Step decide(Prompt prompt);
+    Step stop(bool rejected = false);
 
     CredentialSecrets m_secrets;
+    QByteArray m_user;
+    QByteArray m_host;
     std::array<char, tailCapacity> m_tail{};
     qsizetype m_tailSize = 0;
     qint64 m_quietBytes = 0;
