@@ -212,8 +212,8 @@ paths. Key paths must be absolute or start with `~/`, without SSH expansion toke
 `proxyJump` accepts up to eight comma-separated `[user@]host[:port]` hops; bracket IPv6.
 Legacy `agentForwarding: true` is retained as data but blocks connection until unchecked.
 `forwardX11: true` requires an explicit per-connection warning; only untrusted, time-limited
-`-X` is allowed. These files cannot weaken host-key or cryptographic policy. See the
-[security assessment](SECURITY-ASSESSMENT.md) before distributing a generated catalog.
+`-X` is allowed. These files cannot weaken host-key or cryptographic policy. Read [SECURITY.md](../SECURITY.md)
+before distributing a generated catalog.
 
 For edits to existing IDs, edit `sessions.yaml` and reload, or use the session editor. Reimport
 is deliberately an additive operation, not an update/replace operation. Replacing a catalog
