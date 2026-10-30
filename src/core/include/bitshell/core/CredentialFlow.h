@@ -29,16 +29,18 @@ struct CredentialSecrets {
 // Anything else (sudo, su, a vault, a bare "Password:") never gets a secret.
 // One-time-code prompts are never answered. Every answer is sent at most once:
 // a prompt that asks for a spent answer means it was rejected, so the flow stops.
-// After an answer, the first line of output that is not part of the login, or
-// any prompt that is not ssh's, ends the flow: the login is over.
+// The flow stops for good, whether or not it answered anything, at any prompt
+// that is not ssh's (ssh's host-key question aside), at a shell prompt, and,
+// once ssh has asked for anything, at the first line that is not ssh's.
 class CredentialFlow {
 public:
     // OwnedSsh: 8bitShell launched this ssh. Shell: a credential bound to a
     // shell tab; it answers only after the tab names a target (a typed ssh).
     enum class Scope : std::uint8_t { OwnedSsh, Shell };
     // Unknown: an ssh prompt for the target that no saved answer covers.
+    // HostKey: ssh asks to trust the host, before it authenticates.
     // Other: a prompt that is not ssh's for the target. Never answered.
-    enum class Prompt : std::uint8_t { None, OneTimeCode, Passphrase, Password, Username, Unknown, Other };
+    enum class Prompt : std::uint8_t { None, OneTimeCode, Passphrase, Password, Username, Unknown, HostKey, Other };
     enum class Action : std::uint8_t { None, Send, HandToUser, Stop };
 
     struct Step {
@@ -74,7 +76,6 @@ public:
     void restart();
 
     [[nodiscard]] bool stopped() const { return m_stopped; }
-    [[nodiscard]] bool engaged() const { return m_engaged; }
     [[nodiscard]] Scope scope() const { return m_scope; }
 
     // Exposed for tests. Classifies one already-stripped prompt line.
@@ -89,6 +90,7 @@ private:
     void append(QByteArrayView chunk);
     [[nodiscard]] bool endsLikePrompt() const;
     [[nodiscard]] bool leftLogin() const;
+    [[nodiscard]] bool atShellPrompt() const;
     Step decide(Prompt prompt);
     Step stop(bool rejected = false);
 
