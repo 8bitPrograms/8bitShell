@@ -131,7 +131,8 @@ if($LASTEXITCODE){throw 'WiX compilation failed'}
 $base="$app-$version-windows-$Architecture";$msi=Join-Path $OutputDirectory ($base+'.msi')
 # ICE91 is the per-user LocalAppData hint. ICE64 wants RemoveFolder for the
 # shared Programs directory; uninstall must leave other apps installed there.
-& (Join-Path $wix 'light.exe') -nologo -sice:ICE91 -sice:ICE64 -out $msi $obj
+# Keep the WiX debug database in the scratch folder, not next to the release MSI.
+& (Join-Path $wix 'light.exe') -nologo -sice:ICE91 -sice:ICE64 -pdbout (Join-Path $work 'Application.wixpdb') -out $msi $obj
 if($LASTEXITCODE){throw 'MSI link/validation failed'}
 $nsis=Get-Command makensis.exe -ErrorAction SilentlyContinue
 $compiler=if($nsis){$nsis.Source}else{Join-Path ([Environment]::GetEnvironmentVariable('ProgramFiles(x86)')) 'NSIS/makensis.exe'}
