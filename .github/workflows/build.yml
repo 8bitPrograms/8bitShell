@@ -168,9 +168,10 @@ jobs:
         if: matrix.os != 'windows'
         env:
           BUILD_PACKAGES: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.packages) }}
-          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
-          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
-          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+          # Only macOS non-PR builds receive these; build.py skips notarization when empty.
+          MACOS_NOTARY_APPLE_ID: ${{ matrix.os == 'macos' && github.event_name != 'pull_request' && secrets.MACOS_NOTARY_APPLE_ID || '' }}
+          MACOS_NOTARY_TEAM_ID: ${{ matrix.os == 'macos' && github.event_name != 'pull_request' && secrets.MACOS_NOTARY_TEAM_ID || '' }}
+          MACOS_NOTARY_PASSWORD: ${{ matrix.os == 'macos' && github.event_name != 'pull_request' && secrets.MACOS_NOTARY_PASSWORD || '' }}
         run: |
           args=()
           if [ "$BUILD_PACKAGES" != true ]; then args+=(--build-only); fi
