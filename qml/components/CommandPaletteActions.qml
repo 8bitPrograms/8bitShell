@@ -88,11 +88,24 @@ QtObject {
             command("cyberark:toggle", (PersonalProfile.cyberArkEnabled ? "Disable" : "Enable") + " CyberArk mode", "Existing connections remain open", "cyberark gateway routing toggle"),
             command("routes:manage", "Manage CyberArk routes", "", "cyberark gateway routes", "routes"),
             command("keys:manage", "Manage SSH keys", "", "authentication credentials key identity", "keys"),
+            command("credentials:manage", "Manage credentials", "Usernames with passwords or keys, kept in the keychain", "authentication credentials password login account secret", "credentials"),
             command("logging:toggle", (AppSettings.logByDefault ? "Disable" : "Enable") + " session logging", "Use the logging preference for terminal sessions", "logging record toggle"),
             command("highlight:toggle", (AppSettings.highlightByDefault ? "Disable" : "Enable") + " terminal highlighting", "", "highlight syntax colors toggle")
         ]
         for (const section of sections)
             commands.push(command("settings:" + section, "Settings: " + section, "Open this settings section", "settings preferences options " + section, "settings", section))
+        // Credential rows read CredentialStore only while searching, so it
+        // stays unloaded at startup.
+        const current = (tabs || []).find(tab => tab.active)
+        if (current && current.running && needle) {
+            for (const credential of CredentialStore.credentials)
+                commands.push(command("credential:" + credential.id, "Use credential " + credential.name + " in this tab",
+                    credential.username + " · answers the password prompt of ssh you type here", "credential login password key use bind " + credential.username,
+                    "bindCredential", credential.id))
+            if (current.credentialBound)
+                commands.push(command("credential:unbind", "Stop using credential " + current.credential + " in this tab", "",
+                    "credential unbind stop forget", "unbindCredential"))
+        }
         for (const entry of commands)
             if (matches(entry.title + " " + entry.subtitle + " " + entry.keywords)) actions.push(entry)
         for (const profile of LocalProfileStore.profiles) {

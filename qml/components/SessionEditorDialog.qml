@@ -19,7 +19,8 @@ Dialog {
     property string formError: ""
     property string selectedIdentityKey: ""
     property bool externalIdentityOpen: false
-    property string selectedAuthenticationMode: "auto"
+    property string selectedAuthenticationMode: "auto" // auto, password, or credential (UI only)
+    property string selectedCredential: ""
     property string editSessionId: ""
     property bool hasStoredPassword: false
     property bool removeStoredPassword: false
@@ -69,11 +70,21 @@ Dialog {
 
     signal sessionSaved(int index)
     signal keysRequested()
+    signal credentialsRequested()
+    readonly property var credentialOptions: {
+        const rows = []
+        for (const entry of CredentialStore.credentials)
+            rows.push({text: entry.name + " · " + entry.username + " · " + (entry.type === "key" ? "SSH key" : "password"), value: entry.id})
+        if (selectedCredential && !rows.some(row => row.value === selectedCredential))
+            rows.push({text: "Deleted credential · choose another", value: selectedCredential})
+        return rows
+    }
 
     function openCreate(folder) {
         editIndex = -1
         editSessionId = ""
         selectedAuthenticationMode = "auto"
+        selectedCredential = ""
         passwordField.text = ""
         hasStoredPassword = false
         removeStoredPassword = false
@@ -104,7 +115,8 @@ Dialog {
             return
         editIndex = index
         editSessionId = profile.id || ""
-        selectedAuthenticationMode = profile.authenticationMode || "auto"
+        selectedCredential = profile.credential || ""
+        selectedAuthenticationMode = selectedCredential ? "credential" : (profile.authenticationMode || "auto")
         passwordField.text = ""
         removeStoredPassword = false
         nameField.text = profile.name || ""
@@ -159,6 +171,10 @@ Dialog {
             return
         }
 
+        if (root.selectedAuthenticationMode === "credential" && root.selectedCredential.length === 0) {
+            formError = "Choose a saved credential, or another authentication."
+            return
+        }
         const tagValues = tagsField.text.split(",")
                               .map(function(value) { return value.trim() })
                               .filter(function(value) { return value.length > 0 })
@@ -176,7 +192,8 @@ Dialog {
             forwardX11: x11Check.checked,
             agentForwarding: agentCheck.checked,
             compression: compressionCheck.checked
-            , authenticationMode: root.selectedAuthenticationMode
+            , authenticationMode: root.selectedAuthenticationMode === "credential" ? "auto" : root.selectedAuthenticationMode
+            , credential: root.selectedAuthenticationMode === "credential" ? root.selectedCredential : ""
             , backspaceMode: backspaceCombo.currentValue || "default"
             , connection: connectionChoice.toSelection()
         }
@@ -420,13 +437,51 @@ Dialog {
                     id: authenticationCombo
                     objectName: "sessionAuthenticationCombo"
                     Layout.fillWidth: true
-                    model: [{text: "Automatic / SSH key", value: "auto"}, {text: "Password", value: "password"}]
+                    model: [{text: "Automatic / SSH key", value: "auto"}, {text: "Password", value: "password"},
+                        {text: "Saved credential", value: "credential"}]
                     textRole: "text"; valueRole: "value"
-                    currentIndex: root.selectedAuthenticationMode === "password" ? 1 : 0
+                    currentIndex: root.selectedAuthenticationMode === "password" ? 1
+                                  : root.selectedAuthenticationMode === "credential" ? 2 : 0
                     onActivated: {
                         root.selectedAuthenticationMode = currentValue
                         if (currentValue !== "password") passwordField.text = ""
                     }
+                }
+            }
+
+            ColumnLayout {
+                objectName: "sessionCredentialControls"
+                Layout.fillWidth: true
+                visible: root.selectedAuthenticationMode === "credential"
+                spacing: 6
+                RowLayout {
+                    Layout.fillWidth: true
+                    AppComboBox {
+                        id: credentialCombo
+                        objectName: "sessionCredentialCombo"
+                        Layout.fillWidth: true
+                        model: root.credentialOptions
+                        textRole: "text"; valueRole: "value"
+                        displayText: currentIndex < 0 ? "Choose a credential" : currentText
+                        currentIndex: {
+                            for (let index = 0; index < root.credentialOptions.length; ++index)
+                                if (root.credentialOptions[index].value === root.selectedCredential) return index
+                            return -1
+                        }
+                        onActivated: root.selectedCredential = currentValue
+                    }
+                    AppButton {
+                        objectName: "manageSessionCredentialsButton"
+                        compact: true
+                        text: "Manage credentials…"
+                        onClicked: root.credentialsRequested()
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "The credential's username is used to log in. Its password or key answers the login prompts; verification codes are always left to you."
+                    textFormat: Text.PlainText; wrapMode: Text.Wrap
+                    color: Theme.textFaint; font.pixelSize: Theme.uiFontSize(8)
                 }
             }
 
