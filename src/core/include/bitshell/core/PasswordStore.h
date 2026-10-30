@@ -22,6 +22,26 @@ public:
     [[nodiscard]] static std::expected<void, QString> write(const QVariantMap& profile,
                                                           const QByteArray& password);
     [[nodiscard]] static std::expected<void, QString> remove(const QVariantMap& profile);
+
+    // Opaque secrets for credential profiles, addressed by a nonsecret
+    // reference. Any bytes up to 64 KiB; stored base64 in backend-sized chunks.
+    // An empty result means no secret is saved under the reference.
+    [[nodiscard]] static std::expected<QByteArray, QString> readSecret(const QString& reference);
+    [[nodiscard]] static std::expected<void, QString> writeSecret(const QString& reference,
+                                                                const QByteArray& secret);
+    [[nodiscard]] static std::expected<void, QString> removeSecret(const QString& reference);
+
+    // Tests only: an in-process stand-in for the OS keychain, so keychain
+    // paths run in CI without a Secret Service. The app never installs one.
+    // Ignored on Windows, whose DPAPI backend needs no service. Pass nullptr
+    // to restore the OS keychain.
+    struct TestKeychain {
+        virtual ~TestKeychain() = default;
+        virtual std::expected<QByteArray, QString> read(const QString& slot) = 0;
+        virtual std::expected<void, QString> write(const QString& slot, const QByteArray& secret) = 0;
+        virtual std::expected<void, QString> remove(const QString& slot) = 0;
+    };
+    static void useTestKeychain(TestKeychain* keychain);
 };
 
 } // namespace bitshell::core
