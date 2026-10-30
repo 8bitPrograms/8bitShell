@@ -153,8 +153,13 @@ private slots:
         QProcess fresh;
         startHelper(fresh, *current, prompt(profile()));
         QTRY_COMPARE_WITH_TIMEOUT(fresh.state(), QProcess::NotRunning, 10000);
-        QCOMPARE(fresh.exitCode(), 0);
-        QVERIFY(fresh.readAllStandardOutput() == QByteArrayLiteral("replacement-fixture\n"));
+        const auto freshError = fresh.readAllStandardError();
+        const auto freshOutput = fresh.readAllStandardOutput();
+        QVERIFY2(fresh.exitStatus() == QProcess::NormalExit && fresh.exitCode() == 0,
+                 qPrintable(QStringLiteral("status %1 code %2 stderr %3 stdout %4")
+                     .arg(int(fresh.exitStatus())).arg(fresh.exitCode())
+                     .arg(QString::fromUtf8(freshError), QString::fromUtf8(freshOutput))));
+        QVERIFY(freshOutput == QByteArrayLiteral("replacement-fixture\n"));
     }
 
     void simultaneousConnectionsKeepSecretsSeparate() {

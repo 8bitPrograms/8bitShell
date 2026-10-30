@@ -16,6 +16,7 @@ namespace bitshell::core {
 namespace {
 constexpr qsizetype maximumPasswordBytes = 4096;
 constexpr qint64 maximumRequestBytes = 4096;
+constexpr int sessionLifetimeMs = 60000;
 
 void wipe(QByteArray& value) {
     value.fill('\0');
@@ -42,7 +43,7 @@ PasswordBroker::PasswordBroker(QObject* parent)
     m_server.setMaxPendingConnections(4);
     m_expiry.setObjectName(QStringLiteral("passwordBrokerExpiry"));
     m_expiry.setSingleShot(true);
-    m_expiry.setInterval(60000);
+    m_expiry.setInterval(sessionLifetimeMs);
     connect(&m_expiry, &QTimer::timeout, this, &PasswordBroker::stop);
     connect(&m_server, &QLocalServer::newConnection, this, &PasswordBroker::acceptConnections);
 }
@@ -97,6 +98,8 @@ PasswordBroker::start(const QVariantMap& profile, const QByteArray& password) {
     };
     addPrompt(host);
     addPrompt(host.toLower()); // OpenSSH folds DNS names before authentication.
+    // Every session gets a full minute, even if a test or caller shortened the timer.
+    m_expiry.setInterval(sessionLifetimeMs);
     m_expiry.start();
 
     QProcessEnvironment environment;

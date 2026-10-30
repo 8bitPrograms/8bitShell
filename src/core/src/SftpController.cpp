@@ -13,6 +13,7 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QGuiApplication>
+#include <QProcessEnvironment>
 #include <QSet>
 #include <QUuid>
 
@@ -445,6 +446,14 @@ void SftpController::startBatch(Operation operation,
         if (!additions) { finishWithError(additions.error()); return; }
         for (const auto& key : additions->keys()) environment.insert(key, additions->value(key));
     }
+#ifdef Q_OS_WIN
+    // Production SSH keeps a trusted PATH. The Windows test double is this Qt
+    // executable, and the loader will not find Qt beside it once PATH is replaced.
+    if (!m_testTransport.isEmpty()) {
+        const auto path = QProcessEnvironment::systemEnvironment().value(QStringLiteral("PATH"));
+        if (!path.isEmpty()) environment.insert(QStringLiteral("PATH"), path);
+    }
+#endif
 
     m_operation = operation;
     m_standardOutput.clear();

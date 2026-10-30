@@ -3,6 +3,7 @@
 #include <bitshell/core/PasswordBroker.h>
 #include <bitshell/core/PasswordStore.h>
 #include <QDir>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QUrl>
 #include <algorithm>
@@ -140,6 +141,12 @@ void HostMonitor::start() {
             for (const auto& key : additions->keys()) environment.insert(key, additions->value(key));
         }
     }
+#ifdef Q_OS_WIN
+    if (!m_testTransport.isEmpty()) {
+        const auto path = QProcessEnvironment::systemEnvironment().value(QStringLiteral("PATH"));
+        if (!path.isEmpty()) environment.insert(QStringLiteral("PATH"), path);
+    }
+#endif
     // One persistent SSH process streams samples. Authentication failure leaves
     // monitoring stopped until the user explicitly retries; no password loop.
     m_process.setProcessEnvironment(environment);
