@@ -1,4 +1,4 @@
-# Version 1.0.0
+# 8bitShell 1.0.0
 
 The first release under the 8bitShell name. 8bitShell is a programmable remote-access terminal workspace. It brings local terminals, OpenSSH sessions, SFTP, logging and organization-specific connection policy into one Qt Quick app. It is licensed GPL-3.0-or-later.
 
