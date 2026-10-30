@@ -373,17 +373,24 @@ CredentialFlow::Step CredentialFlow::feed(QByteArrayView chunk) {
         const QByteArray last = lower(promptLine(chunk.sliced(chunk.lastIndexOf('\n') + 1)));
         instructions = (last.endsWith(':') || last.endsWith('?')) && last.startsWith('(' + target(m_user, m_host) + ") ");
     }
+    // Lines that cannot end the window (an owned login's banner) are skipped
+    // without being copied.
+    const bool judge = (m_scope == Scope::Shell || m_engaged) && !instructions;
     for (qsizetype newline = chunk.indexOf('\n'); newline >= 0; newline = chunk.indexOf('\n')) {
-        QByteArrayView piece = chunk.first(newline);
+        const QByteArrayView piece = chunk.first(newline);
         chunk = chunk.sliced(newline + 1);
+        m_promptSeen = false;
+        m_awaitingUser = false;
+        if (!judge) {
+            m_tailSize = 0;
+            continue;
+        }
         append(piece);
         QByteArrayView raw(m_tail.data(), m_tailSize);
         while (!raw.isEmpty() && raw.back() == '\r') raw.chop(1);
         const QByteArray line = lower(promptLine(raw));
         m_tailSize = 0;
-        m_promptSeen = false;
-        m_awaitingUser = false;
-        if ((m_scope == Scope::Shell || m_engaged) && !instructions && !loginLine(line)) return stop();
+        if (!loginLine(line)) return stop();
     }
     append(chunk);
     // The current line is a prompt once; bytes added to it later (an echoed
