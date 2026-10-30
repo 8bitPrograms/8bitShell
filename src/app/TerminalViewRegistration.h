@@ -15,6 +15,7 @@
 #include <bitshell/core/LocalFileModel.h>
 #include <bitshell/core/PersonalProfile.h>
 #include <bitshell/core/SshKeyStore.h>
+#include <bitshell/core/CredentialStore.h>
 
 namespace bitshell::app {
 struct LocalProfileStoreRegistration {
@@ -41,6 +42,13 @@ struct SshKeyStoreRegistration {
     Q_GADGET
     QML_FOREIGN(bitshell::core::SshKeyStore)
     QML_NAMED_ELEMENT(SshKeyStore)
+    QML_SINGLETON
+    QML_ADDED_IN_VERSION(1, 0)
+};
+struct CredentialStoreRegistration {
+    Q_GADGET
+    QML_FOREIGN(bitshell::core::CredentialStore)
+    QML_NAMED_ELEMENT(CredentialStore)
     QML_SINGLETON
     QML_ADDED_IN_VERSION(1, 0)
 };
