@@ -82,6 +82,12 @@ jobs:
         run: |
           brew install ninja
           python -m pip install cmake==3.31.6
+          # macOS ships bash 3.2; PtyProcessTest's history test needs bash >= 4.4.
+          # Install Homebrew bash only when PATH has no new enough bash already.
+          if ! bash -c '(( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) ))' 2>/dev/null; then
+            brew install bash
+          fi
+          hash -r; command -v bash && bash --version | head -n 1
       - name: Validate Windows install and uninstall authoring
         if: matrix.os == 'windows'
         shell: pwsh
