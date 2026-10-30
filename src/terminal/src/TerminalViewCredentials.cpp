@@ -1,9 +1,11 @@
 #include "TerminalViewCredentials.h"
 
+#include <bitshell/core/ConnectionRouting.h>
 #include <bitshell/core/CredentialStore.h>
 #include <bitshell/core/PasswordStore.h>
 #include <bitshell/core/Platform.h>
 #include <bitshell/core/PrivateFile.h>
+#include <bitshell/core/SecureMemory.h>
 
 #include <QDir>
 #include <QFile>
@@ -20,16 +22,34 @@ namespace {
 
 using core::CredentialFlow;
 
-// Owned ssh needs the flow only while it logs in. An ad hoc tab keeps its
-// binding for an hour of typing ssh commands, then forgets the secret.
+// Owned ssh needs the flow only while it logs in (host-key question
+// included). An ad hoc tab's binding: see TerminalView::m_boundCredentialMs.
 constexpr int ownedDeadlineMs = 120 * 1000;
-constexpr int boundDeadlineMs = 60 * 60 * 1000;
 // Lifetime of a key that an ad hoc tab adds to ssh-agent.
 constexpr int agentKeySeconds = 300;
 
-void wipe(QByteArray& bytes) {
-    bytes.fill('\0');
-    bytes.clear();
+void wipe(QByteArray& bytes) { core::secureWipe(bytes); }
+
+// The user@host OpenSSH names in its prompts for this launch: the endpoint
+// SshSecurity::command connects to. A CyberArk route logs in to its gateway
+// with the route's login string. ssh falls back to the local account name.
+std::pair<QByteArray, QByteArray> sshTarget(const QVariantMap& profile) {
+    QString user = profile.value(QStringLiteral("user")).toString();
+    QString host = profile.value(QStringLiteral("host")).toString();
+    if (profile.contains(QStringLiteral("psmp"))) {
+        const auto login = core::ConnectionRouting::login(profile);
+        user = login ? *login : QString{};
+        host = profile.value(QStringLiteral("psmp")).toMap().value(QStringLiteral("route")).toMap()
+            .value(QStringLiteral("host")).toString();
+        if (user.isEmpty()) return {}; // never guess a gateway login
+    }
+#ifdef Q_OS_WIN
+    if (user.isEmpty()) user = qEnvironmentVariable("USERNAME");
+#else
+    if (user.isEmpty()) user = qEnvironmentVariable("USER");
+#endif
+    if (host.startsWith(u'[') && host.endsWith(u']')) host = host.sliced(1, host.size() - 2);
+    return {user.toUtf8(), host.toUtf8()};
 }
 
 // A private directory only this user can read. Linux: $XDG_RUNTIME_DIR
@@ -67,20 +87,26 @@ QString writeKeyFile(QByteArray& key, QString& error) {
     return QFileInfo(path).absoluteFilePath();
 }
 
-QByteArray typed(const Win32Input& mode, const QByteArray& bytes) {
-    if (!mode.enabled()) return bytes;
-    // ConPTY win32-input mode: a down/up pair per character, as in
-    // completePendingLocalSsh.
+// ConPTY win32-input mode: a down/up pair per character, as in
+// completePendingLocalSsh. Every buffer that holds the answer is zeroed.
+QByteArray win32Typed(const QByteArray& bytes) {
     QString text = QString::fromUtf8(bytes);
     QByteArray input;
     for (QChar character : std::as_const(text)) {
         const QString key(character);
         const auto code = character == u'\r' ? Qt::Key_Return : Qt::Key_unknown;
-        QKeyEvent press(QEvent::KeyPress, code, Qt::NoModifier, key);
-        QKeyEvent release(QEvent::KeyRelease, code, Qt::NoModifier, key);
-        input += Win32Input::encode(press, true) + Win32Input::encode(release, false);
+        {
+            QKeyEvent press(QEvent::KeyPress, code, Qt::NoModifier, key);
+            QKeyEvent release(QEvent::KeyRelease, code, Qt::NoModifier, key);
+            QByteArray down = Win32Input::encode(press, true), up = Win32Input::encode(release, false);
+            core::secureAppend(input, down);
+            core::secureAppend(input, up);
+            wipe(down); wipe(up);
+        }
+        // The events shared key's block; zero it in place.
+        core::secureZero(const_cast<QChar*>(key.constData()), std::size_t(key.size()) * sizeof(QChar));
     }
-    text.fill(u'\0');
+    core::secureZero(text.data(), std::size_t(text.size()) * sizeof(QChar));
     return input;
 }
 
@@ -149,7 +175,11 @@ void TerminalView::prepareCredential(const QVariantMap& profile, QVariantMap& ef
     // CyberArk routes build their own gateway login, so they keep it.
     if (!profile.contains(QStringLiteral("psmp")))
         effective.insert(QStringLiteral("user"), QString::fromUtf8(resolved->secrets.username));
-    effective.insert(QStringLiteral("authenticationMode"), QStringLiteral("auto"));
+    // A password credential logs in by password only, so a key or agent login
+    // can never leave a later prompt (sudo, a vault) waiting for the secret.
+    // A key credential's flow answers only its temporary key's passphrase.
+    const bool key = resolved->type == QStringLiteral("key");
+    effective.insert(QStringLiteral("authenticationMode"), key ? QStringLiteral("auto") : QStringLiteral("password"));
     if (!resolved->secretError.isEmpty()) {
         resolved->secrets.wipe();
         notice = QStringLiteral("Could not read the saved secret for credential '%1': %2 Type it yourself.")
@@ -157,7 +187,7 @@ void TerminalView::prepareCredential(const QVariantMap& profile, QVariantMap& ef
         return;
     }
     QString keyFile;
-    if (resolved->type == QStringLiteral("key")) {
+    if (key) {
         QString error;
         keyFile = writeKeyFile(resolved->privateKey, error);
         if (keyFile.isEmpty()) {
@@ -171,6 +201,8 @@ void TerminalView::prepareCredential(const QVariantMap& profile, QVariantMap& ef
     }
     m_preparedCredential = std::make_unique<CredentialSession>(std::move(resolved->secrets),
         CredentialFlow::Scope::OwnedSsh, resolved->id, resolved->name, keyFile);
+    const auto [user, host] = sshTarget(effective);
+    m_preparedCredential->flow.setTarget(user, host);
 }
 
 // A session in password mode with a remembered password. The password is
@@ -192,6 +224,8 @@ void TerminalView::prepareSavedPassword(const QVariantMap& profile, QString& not
     secrets.password = std::move(*password);
     m_preparedCredential = std::make_unique<CredentialSession>(std::move(secrets),
         CredentialFlow::Scope::OwnedSsh, QString{}, QString{}, QString{});
+    const auto [user, host] = sshTarget(profile);
+    m_preparedCredential->flow.setTarget(user, host);
 }
 
 void TerminalView::armPreparedCredential() {
@@ -200,7 +234,7 @@ void TerminalView::armPreparedCredential() {
     m_credential = std::move(m_preparedCredential);
     const auto generation = ++m_credentialGeneration;
     // One timer per arming, not a poll: it only ends a flow that never settled.
-    QTimer::singleShot(owned ? ownedDeadlineMs : boundDeadlineMs, this, [this, generation] {
+    QTimer::singleShot(owned ? ownedDeadlineMs : m_boundCredentialMs, this, [this, generation] {
         if (m_credential && m_credentialGeneration == generation) releaseCredential();
     });
     emit credentialChanged();
@@ -244,7 +278,7 @@ bool TerminalView::bindCredential(const QString& id) {
         connect(&loader->process, &PtyProcess::dataReceived, this, [this, loader](const QByteArray& data) {
             auto step = loader->flow.feed(QByteArrayView(data));
             if (step.action == CredentialFlow::Action::Send) {
-                loader->process.write(step.bytes);
+                loader->process.writeSecret(step.bytes);
                 wipe(step.bytes);
             } else if (step.action == CredentialFlow::Action::HandToUser
                        || (step.action == CredentialFlow::Action::Stop && step.rejected)) {
@@ -288,10 +322,24 @@ bool TerminalView::bindCredential(const QString& id) {
     const auto user = QString::fromUtf8(resolved->secrets.username);
     m_preparedCredential = std::make_unique<CredentialSession>(std::move(resolved->secrets),
         CredentialFlow::Scope::Shell, resolved->id, resolved->name, QString{});
+    m_preparedCredential->user = user;
     armPreparedCredential();
-    setStatusText(QStringLiteral("Credential '%1' will answer the password prompt when you type ssh %2@host in this tab.")
-        .arg(m_credential->name, user));
+    setStatusText(QStringLiteral("Credential '%1' will answer the password prompt when you type ssh %2@host in this tab, for the next %3 minutes.")
+        .arg(m_credential->name, user).arg(m_boundCredentialMs / 60000));
     return true;
+}
+
+// A typed ssh names the host a bound credential may answer for: ssh's own
+// prompt for the credential's user at that host, in this round only.
+void TerminalView::targetBoundCredential(const QVariantMap& connection) {
+    if (!credentialBound()) return;
+    auto& session = *m_credential;
+    session.restartPending = false;
+    session.flow.restart();
+    const auto host = connection.value(QStringLiteral("host")).toString();
+    auto user = session.user;
+    if (user.isEmpty()) user = connection.value(QStringLiteral("user")).toString();
+    if (!host.isEmpty() && !user.isEmpty()) session.flow.setTarget(user.toUtf8(), host.toUtf8());
 }
 
 void TerminalView::unbindCredential() {
@@ -314,16 +362,19 @@ void TerminalView::answerCredentialPrompt(const QByteArray& data) {
     case CredentialFlow::Action::None:
         return;
     case CredentialFlow::Action::Send: {
-        auto input = typed(m_win32Input, step.bytes);
+        // step.bytes is the only copy unless ConPTY wants key records.
+        QByteArray encoded;
+        if (m_win32Input.enabled()) encoded = win32Typed(step.bytes);
+        const QByteArray& input = m_win32Input.enabled() ? encoded : step.bytes;
+        const bool fits = m_process.canWrite(input.size());
+        if (fits) m_process.writeSecret(input);
+        wipe(encoded);
         wipe(step.bytes);
-        if (!m_process.canWrite(input.size())) {
-            wipe(input);
+        if (!fits) {
             setStatusText(QStringLiteral("The terminal input queue is full. Type the %1 yourself.").arg(promptWord(step.prompt)));
             forceActiveFocus();
             return;
         }
-        m_process.write(input);
-        wipe(input);
         setStatusText(QStringLiteral("Sent the saved %1 from %2.").arg(promptWord(step.prompt), sourceOf(session.name)));
         return;
     }
@@ -331,7 +382,7 @@ void TerminalView::answerCredentialPrompt(const QByteArray& data) {
         forceActiveFocus();
         if (step.prompt == CredentialFlow::Prompt::OneTimeCode)
             setStatusText(QStringLiteral("Type the verification code yourself. The login continues after it."));
-        else if (step.prompt == CredentialFlow::Prompt::Unknown)
+        else if (step.prompt == CredentialFlow::Prompt::Unknown || step.prompt == CredentialFlow::Prompt::Other)
             setStatusText(QStringLiteral("The server asked something %1 does not cover. Answer it yourself.").arg(sourceOf(session.name)));
         else
             setStatusText(QStringLiteral("There is no saved %1 in %2. Type it yourself.").arg(promptWord(step.prompt), sourceOf(session.name)));

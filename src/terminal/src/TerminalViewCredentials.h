@@ -19,6 +19,7 @@ struct TerminalView::CredentialSession {
     core::CredentialFlow flow;
     QString id;
     QString name;
+    QString user;    // the credential's login name (not a secret), for a bound tab's target
     QString keyFile; // temporary private key copy, empty for passwords
     bool restartPending = false;
 };

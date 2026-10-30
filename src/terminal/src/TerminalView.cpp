@@ -887,6 +887,8 @@ QVariantMap TerminalView::sshConnectionSummary(const QVariantMap& profile, const
 void TerminalView::setCurrentSshConnection(const QVariantMap& connection) {
     if (m_currentSshConnection == connection) return;
     m_currentSshConnection = connection;
+    if (m_credential && connection.value(QStringLiteral("mode")) == QStringLiteral("local")) [[unlikely]]
+        targetBoundCredential(connection);
     // OSC callbacks run under the terminal mutex. Publish after that batch so
     // palette listeners can safely inspect the terminal or change focus.
     if (m_processingOutput) m_currentSshConnectionNotificationPending = true;

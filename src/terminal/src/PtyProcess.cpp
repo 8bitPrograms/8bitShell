@@ -1,6 +1,7 @@
 #include <bitshell/terminal/PtyProcess.h>
 #include <bitshell/core/SshSecurity.h>
 #include <bitshell/core/Platform.h>
+#include <bitshell/core/SecureMemory.h>
 
 #include <QFile>
 #include <QFileInfo>
@@ -195,7 +196,7 @@ void PtyProcess::stop() {
     const bool wasRunning = isRunning();
     m_readNotifier.reset();
     m_writeNotifier.reset();
-    m_writeBuffer.clear();
+    discardWriteBuffer();
 
     if (m_masterFd >= 0) {
         ::close(m_masterFd);
@@ -250,8 +251,29 @@ void PtyProcess::write(QByteArray data) {
         emit errorOccurred(QStringLiteral("Terminal input exceeded the 1 MiB queue limit; input was not sent."));
         return;
     }
-    m_writeBuffer.append(std::move(data));
+    if (m_secretQueued) [[unlikely]] core::secureAppend(m_writeBuffer, data);
+    else m_writeBuffer.append(std::move(data));
     flushWriteBuffer();
+}
+
+void PtyProcess::writeSecret(QByteArrayView data) {
+    if (!isRunning() || data.isEmpty()) {
+        return;
+    }
+    if (data.size() > 1024 * 1024 - m_writeBuffer.size()) {
+        emit errorOccurred(QStringLiteral("Terminal input exceeded the 1 MiB queue limit; input was not sent."));
+        return;
+    }
+    core::secureAppend(m_writeBuffer, data);
+    m_secretQueued = true;
+    flushWriteBuffer();
+}
+
+void PtyProcess::discardWriteBuffer() {
+    // A secret's block is zeroed and kept (empty) rather than freed unzeroed.
+    if (m_secretQueued) core::secureWipe(m_writeBuffer);
+    else m_writeBuffer.clear();
+    m_secretQueued = false;
 }
 
 void PtyProcess::setEraseCharacter(char value) {
@@ -327,7 +349,8 @@ void PtyProcess::flushWriteBuffer() {
                                       m_writeBuffer.constData(),
                                       static_cast<std::size_t>(m_writeBuffer.size()));
         if (count > 0) {
-            m_writeBuffer.remove(0, static_cast<qsizetype>(count));
+            if (m_secretQueued) [[unlikely]] core::secureConsume(m_writeBuffer, static_cast<qsizetype>(count));
+            else m_writeBuffer.remove(0, static_cast<qsizetype>(count));
             continue;
         }
         if (count < 0 && errno == EINTR) {
@@ -338,9 +361,10 @@ void PtyProcess::flushWriteBuffer() {
             return;
         }
         emit errorOccurred(systemError("write PTY"));
-        m_writeBuffer.clear();
+        discardWriteBuffer();
         break;
     }
+    if (m_writeBuffer.isEmpty()) m_secretQueued = false; // consumed bytes are already zero
 
     if (m_writeNotifier != nullptr) {
         m_writeNotifier->setEnabled(!m_writeBuffer.isEmpty());
@@ -351,7 +375,7 @@ void PtyProcess::finishFromMaster() {
     const bool wasRunning = isRunning();
     m_readNotifier.reset();
     m_writeNotifier.reset();
-    m_writeBuffer.clear();
+    discardWriteBuffer();
 
     if (m_masterFd >= 0) {
         ::close(m_masterFd);
