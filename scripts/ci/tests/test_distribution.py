@@ -47,9 +47,16 @@ class ReleaseContractTests(unittest.TestCase):
   names=[e["name"] for e in json.loads((out/"manifest-windows-arm64.json").read_text())]
   self.assertEqual(sorted(names),sorted(assets))
   # Upload only what CI's upload-artifact globs keep: the stray files are left behind.
-  for n in (base+".wixpdb",base+".msi.log",base+".zip.part"):(out/n).unlink()
+  # The other target's MSI has no manifest here, and finalize refuses unlisted files.
+  for n in (base+".wixpdb",base+".msi.log",base+".zip.part",f"{app}-1.0.0-windows-x64.msi"):(out/n).unlink()
   d.finalize(out,"example/test")
   self.assertEqual(len(json.loads((out/"release-manifest.json").read_text())["assets"]),4)
+ def test_finalize_refuses_files_no_manifest_lists(self):
+  out=self.t/"release";out.mkdir();app=d.config()["app"];base=f"{app}-1.0.0-windows-x86"
+  for n in (base+".zip",base+".msi",base+".wixpdb",base+".pdb",base+".msi.log",base+".zip.part"):(out/n).write_bytes(n.encode())
+  d.stamp_assets(out,"windows","x86")
+  with self.assertRaisesRegex(ValueError,"refusing to publish: .*wixpdb"):d.finalize(out,"example/test")
+  self.assertFalse((out/"SHA256SUMS.txt").exists())
  def test_release_architecture_overrides_are_validated(self):
   with patch.dict(os.environ,RELEASE_ARCH="made-up"):
    with self.assertRaises(ValueError):d.arch()
