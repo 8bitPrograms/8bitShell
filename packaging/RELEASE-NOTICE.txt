@@ -11,5 +11,5 @@ and Windows packaging review are recorded in packaging/release-policy.json.
 That workflow gate does not change the GPL grant.
 
 The application is not a certified or independently audited security product.
-Windows previews require the Microsoft Visual C++ x64 Redistributable and the
-Windows OpenSSH Client, installed through the normal approved OS process.
+Windows packages bundle the Microsoft Visual C++ runtime DLLs app-locally and
+the Win32-OpenSSH client tools; neither needs a separate OS install.

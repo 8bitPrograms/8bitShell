@@ -4,7 +4,7 @@ The first release under the 8bitShell name. 8bitShell is a programmable remote-a
 
 ## Highlights
 
-- **Terminals:** real PTY-backed local terminals on Linux and macOS, and ConPTY on Windows. They support 24-bit and 256-color ANSI, alternate-screen apps, mouse input, scrollback, history search and zoom per pane.
+- **Terminals:** real PTY-backed local terminals on Linux, and ConPTY on Windows. They support 24-bit and 256-color ANSI, alternate-screen apps, mouse input, scrollback, history search and zoom per pane.
 - **Tabs and layouts:** tabs you can reorder by dragging, and 2-, 4- or 6-pane layouts. Multi-SSH commands are reviewed before they run and use explicit include/exclude targeting. Keystrokes are never broadcast automatically.
 - **SSH:** direct OpenSSH sessions from Quick Connect and saved profiles. Saved passwords are kept in device-local protected storage and are now used when you open a saved session. Key and agent login also work.
 - **Key library:** a private library for OpenSSH/PEM keys and imported PPK keys. PPK conversion uses the bundled PuTTYgen.
@@ -16,12 +16,12 @@ The first release under the 8bitShell name. 8bitShell is a programmable remote-a
 - **Config files:** settings, sessions and macros are versioned YAML files with import, export, live reload and conflict protection.
 - **Secure defaults:** unknown or changed host keys are refused, agent forwarding is off and legacy crypto is excluded.
 - **Windows:** the MSI adds `8bitshell` to your user PATH. Console input supports ConPTY's Win32 keyboard mode. Ctrl+C interrupts the foreground program when nothing is selected.
-- **Updates:** optional stable-release checks and SHA-256-verified downloads are in Settings > Updates. Automatic installation is off by default. Per-user Windows installs can opt in to installing on exit. Portable, Linux and macOS copies offer manual downloads.
+- **Updates:** optional stable-release checks and SHA-256-verified downloads are in Settings > Updates. Automatic installation is off by default. Per-user Windows installs can opt in to installing on exit. Portable and Linux copies offer manual downloads.
 - New Pixel Core icon: a teal terminal tile that matches 8bitPad.
 
 ## Install
 
-Packages bundle Qt, the app's runtime libraries and the SSH command-line tools, so you don't need a Qt SDK or the optional Windows OpenSSH feature. Windows packages also include the redistributable MSVC runtime.
+Packages bundle Qt, the app's runtime libraries and the SSH command-line tools, so you don't need a Qt SDK. Windows packages also include the app-local MSVC runtime DLLs and the OpenSSH client tools, so neither the Visual C++ Redistributable nor the Windows OpenSSH Client feature has to be installed.
 
 **Windows (x64, ARM64)**
 - `8bitShell-1.0.0-windows-<arch>.msi`: per-user install with a Start menu entry and `8bitshell` on your PATH.
@@ -35,15 +35,11 @@ Packages bundle Qt, the app's runtime libraries and the SSH command-line tools, 
 - Any distribution: extract `8bitShell-1.0.0-linux-<arch>.tar.gz` and run `./8bitShell`.
 - Per-user curl install: `curl -fsSL https://github.com/8bitPrograms/8bitShell/releases/latest/download/install.sh | sh`
 
-**macOS (Apple Silicon only, macOS 14.4 or newer)**
-- Open `8bitShell-1.0.0-macos-arm64.dmg` and drag 8bitShell to Applications. Portable `.zip` and `.tar.gz` archives are also attached.
-
 Use `x64` or `arm64` as `<arch>`.
 
 ## Known issues
 
-- **No macOS Intel (x64) build in 1.0.0.** A known intermittent failure in a PTY session-log test (`PerformanceRegressionTest::concurrentHiddenPtysKeepCompleteLogs`) is still being investigated, so x64 is held back. It will ship in a later release.
-- **macOS:** the builds are ad-hoc signed and not notarized, so Gatekeeper warns on first launch. To open the app, Control-click it and choose Open.
+- **No macOS build in 1.0.0.** A known session-log bug, caught intermittently by `PerformanceRegressionTest::concurrentHiddenPtysKeepCompleteLogs` on macOS, holds macOS back. macOS builds will follow in 1.0.1 after the fix.
 - **Windows:** packages aren't Authenticode-signed yet, so SmartScreen may warn.
 - The SFTP panel uses OpenSSH `BatchMode`, so it needs keys or an agent. Password-only SFTP isn't available yet. Passwords still work in terminal sessions.
 - Host keys must be verified before connecting. App-managed SSH ignores user and system `ssh_config` but still uses standard `known_hosts`.
@@ -52,4 +48,4 @@ Use `x64` or `arm64` as `<arch>`.
 
 ## Checksums
 
-SHA-256 sums are attached as `SHA256SUMS.txt` (or will be added after the CI build).
+SHA-256 sums are attached as `SHA256SUMS.txt`.
