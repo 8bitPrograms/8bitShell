@@ -171,6 +171,7 @@ CredentialFlow::Prompt CredentialFlow::classify(QByteArrayView line, Scope scope
         const bool ours = scope == Scope::OwnedSsh && !keyPath.isEmpty() && line.contains(keyPath);
         return ours ? Prompt::Passphrase : Prompt::Other;
     }
+    if (text.startsWith("are you sure you want to continue connecting")) return Prompt::HostKey;
     if (!fromSsh(text, user, host)) {
         // Not ssh's prompt for the target. A code prompt is still worth a
         // hint in an owned login (OpenSSH before 8.4 prints them bare).
@@ -199,7 +200,7 @@ CredentialFlow::Step CredentialFlow::stop(bool rejected) {
     return step;
 }
 
-// After an answer, a line that is not ssh's means the login is over.
+// Once ssh has asked, a line that is not ssh's means the login is over.
 bool CredentialFlow::leftLogin() const {
     const QByteArrayView tail(m_tail.data(), m_tailSize);
     const qsizetype last = tail.lastIndexOf('\n');
@@ -215,18 +216,34 @@ bool CredentialFlow::leftLogin() const {
     return false;
 }
 
+// A shell prompt on the last line means a shell is running: the login is
+// over, even one that never asked for anything (a key or agent login).
+bool CredentialFlow::atShellPrompt() const {
+    if (m_tailSize == 0 || m_tail[m_tailSize - 1] == '\n') return false;
+    const QByteArray line = promptLine(QByteArrayView(m_tail.data(), m_tailSize));
+    return !line.isEmpty() && (QByteArrayView("$#%>").contains(line.back()) || line.endsWith("\xe2\x9d\xaf"));
+}
+
 CredentialFlow::Step CredentialFlow::decide(Prompt prompt) {
-    // Someone else's prompt after an answer: ssh is past authentication.
-    if (prompt == Prompt::Other && m_spent) return stop();
-    if ((prompt == Prompt::Unknown || prompt == Prompt::Other) && m_scope == Scope::Shell && !m_engaged) return {};
     Step step;
     step.prompt = prompt;
     m_tailSize = 0;
     m_quietBytes = 0;
-    if (prompt == Prompt::OneTimeCode || prompt == Prompt::Unknown || prompt == Prompt::Other) {
-        m_engaged = m_engaged || prompt == Prompt::OneTimeCode;
+    switch (prompt) {
+    case Prompt::HostKey: // ssh's own question, before it authenticates
+        if (m_scope == Scope::OwnedSsh) step.action = Action::HandToUser;
+        return step;
+    case Prompt::Other: // someone else asks: whatever happens next, it is not this login
+        m_stopped = true;
+        step.action = m_scope == Scope::OwnedSsh && !m_spent ? Action::HandToUser : Action::Stop;
+        return step;
+    case Prompt::OneTimeCode:
+    case Prompt::Unknown:
+        m_engaged = true;
         step.action = Action::HandToUser;
         return step;
+    default:
+        break;
     }
     m_engaged = true;
     const QByteArray* answer = &m_secrets.password;
@@ -250,24 +267,20 @@ CredentialFlow::Step CredentialFlow::decide(Prompt prompt) {
 }
 
 CredentialFlow::Step CredentialFlow::feed(QByteArrayView chunk) {
-    if (m_stopped || chunk.isEmpty()) return {};
+    // A Shell flow without a target waits for one at no cost.
+    if (m_stopped || chunk.isEmpty() || (m_scope == Scope::Shell && m_host.isEmpty())) return {};
+    // Counted before the prompt check, so one oversized read ending in a prompt gets nothing.
+    m_quietBytes += chunk.size();
+    const qint64 limit = m_spent ? settledBytes : m_scope == Scope::OwnedSsh ? preambleBytes : shellWindowBytes;
+    if (m_quietBytes > limit) return stop();
     append(chunk);
     if (endsLikePrompt()) {
         const QByteArray line = promptLine(QByteArrayView(m_tail.data(), m_tailSize));
         const Prompt prompt = classify(line, m_scope, m_user, m_host, m_secrets.keyPath);
-        if (prompt != Prompt::None) {
-            Step step = decide(prompt);
-            if (step.action != Action::None) return step;
-        }
-    } else if (m_spent && leftLogin()) {
+        if (prompt != Prompt::None) return decide(prompt);
+    } else if (atShellPrompt() || (m_engaged && leftLogin())) {
         return stop();
     }
-    m_quietBytes += chunk.size();
-    // A Shell flow without a target waits for one at no cost.
-    const qint64 limit = m_spent ? settledBytes
-        : m_scope == Scope::OwnedSsh ? preambleBytes
-        : m_host.isEmpty() ? -1 : shellWindowBytes;
-    if (limit >= 0 && m_quietBytes > limit) return stop();
     return {};
 }
 
