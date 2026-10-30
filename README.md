@@ -1,4 +1,9 @@
 ![8bitShell logo](assets/bitshell.svg)
+
+# 8bitShell
+
+**Kendi yolunu aç.**
+
 **Current version: 1.0.0.** Pixel Core branding: teal terminal.
 
 Local build, test, portable launch and troubleshooting instructions: [docs/BUILDING.md](docs/BUILDING.md).
@@ -7,17 +12,10 @@ Optional version checks and updates are in **Settings > Updates**. Automatic ins
 
 Click the version seven times in Settings to reveal Blueberi, Raspberi and the Cyberpunk-inspired Silverhand, V and K palettes for both the interface and terminal. Unlocking is saved per profile and keeps the current theme; see [theme unlocking](docs/UPDATES.md#version-and-bonus-themes).
 
-Cross-platform release builds, bundled runtimes, curl installation, native packages and repository maintenance are documented in [docs/RELEASING.md](docs/RELEASING.md). Hosted platform checks remain pending; see [docs/RELEASE-VALIDATION.md](docs/RELEASE-VALIDATION.md).
-
-
-# 8bitShell
-
-**Kendi yolunu aç.**
+Cross-platform release builds, bundled runtimes, curl installation, native packages and repository maintenance are documented in [docs/RELEASING.md](docs/RELEASING.md).
 
 **Version 1.0.0 in local release preparation.** Executable: `8bitShell`; Linux package: `8bitshell`.
 See [releases, installers, versioning and distro repositories](docs/RELEASING.md).
-The current naming map and rename checklist are in [branding](docs/BRANDING.md);
-**8bitShell is the selected product name; public brand clearance is still pending.**
 Copyright (C) 2026 8bitShell contributors. 8bitShell is free software under the
 GNU General Public License, version 3 or any later version; see [LICENSE](LICENSE).
 Qt remains a separate, dynamically linked LGPL-3.0/GPL-3.0 library. yaml-cpp,
@@ -139,8 +137,7 @@ After installation, open **8bitShell** from the desktop application menu or run
 `~/.local/bin/bitshell`.
 
 Use security-patched dependency builds; the minimum compilation version is not a security
-support guarantee. See the [security assessment](docs/SECURITY-ASSESSMENT.md) for the tested
-package versions and advisory review.
+support guarantee.
 
 Type commands directly in a local terminal, or enter `host`, `user@host`, or an SSH target
 with `-p`, `-l`, `-i`, `-J`, `-X`, `-C` in Quick Connect. Enter opens the highlighted saved
@@ -183,20 +180,10 @@ IDs; macro conflicts become separate copies. Settings imports validate before ap
 
 ## Performance verification
 
-The [performance implementation plan](docs/PERFORMANCE-PLAN.md) records our goals,
-feature-preservation requirements, next optimization steps, and the C++/Rust and
-native/cross-platform UI comparisons to make before choosing a replacement stack.
-
-The current startup/resource-budget work, Windows 0/1/5/20-tab probe, Rust
-decision, and unverified acceptance targets are documented in
-[startup and session resource budget](docs/PERFORMANCE-BUDGET.md).
-
 Catalog indexing, incremental history search, bounded viewport caching and hidden-panel
-work reduction preserve the security profile and complete session logging. Read the
-[measured performance results and limitations](docs/PERFORMANCE-2026-09-11.md).
+work reduction preserve the security profile and complete session logging.
 The UI regression tests cover batched theme updates, terminal smoothing/hinting,
-connection indicators and interaction/layout behavior. Historical private QA
-screenshots and machine-specific evidence are not part of the public source tree.
+connection indicators and interaction/layout behavior.
 
 ```bash
 cmake --build --preset release --target performance_benchmark
@@ -209,8 +196,6 @@ machine-specific timing thresholds used to declare a security test successful.
 
 ## Security validation
 
-The [security assessment](docs/SECURITY-ASSESSMENT.md) records the threat model, implemented
-controls, reproducible tests, compatibility changes, and remaining release requirements.
 [SECURITY.md](SECURITY.md) describes the current support/disclosure limitations. This build
 is hardened and locally tested, not independently certified or declared vulnerability-free.
 
@@ -229,6 +214,5 @@ The trust integration test starts a temporary unprivileged loopback SSH server i
 and `ssh-keygen` are available. It uses disposable keys, not your real credentials or trust
 store. A skipped trust test is not evidence of successful SSH security validation.
 
-See [single/bulk/folder catalog deletion](docs/CATALOG-DELETION.md),
-the [user guide](docs/USER_GUIDE.md), [architecture](docs/ARCHITECTURE.md),
-[product scope](docs/PRODUCT.md), and [roadmap](docs/ROADMAP.md).
+See [single/bulk/folder catalog deletion](docs/CATALOG-DELETION.md) and
+the [user guide](docs/USER_GUIDE.md).
