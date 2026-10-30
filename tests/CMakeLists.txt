@@ -51,6 +51,7 @@ set_tests_properties(startup_directory_test PROPERTIES TIMEOUT 50
 bitshell_add_core_test(ssh_key_store_test SshKeyStoreTest.cpp)
 bitshell_add_core_test(password_store_test PasswordStoreTest.cpp)
 bitshell_add_core_test(credential_flow_test CredentialFlowTest.cpp)
+bitshell_add_core_test(secure_memory_test SecureMemoryTest.cpp)
 bitshell_add_core_test(credential_store_test CredentialStoreTest.cpp)
 bitshell_add_core_test(password_broker_test PasswordBrokerTest.cpp)
 bitshell_add_core_test(password_auxiliary_test PasswordAuxiliaryTest.cpp)

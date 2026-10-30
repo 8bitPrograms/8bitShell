@@ -120,5 +120,11 @@ public:
     }
     static QVariantMap lastSshProfile(const TerminalView& terminal) { return terminal.m_lastSshProfile; }
     static bool credentialArmed(const TerminalView& terminal) { return terminal.m_credential != nullptr; }
+    // What the shell-integration path records when the user types ssh in a tab.
+    static void noteTypedSsh(TerminalView& terminal, const QVariantMap& requested) {
+        terminal.setCurrentSshConnection(TerminalView::sshConnectionSummary(requested, QStringLiteral("local")));
+    }
+    static int boundCredentialMs(const TerminalView& terminal) { return terminal.m_boundCredentialMs; }
+    static void setBoundCredentialMs(TerminalView& terminal, int ms) { terminal.m_boundCredentialMs = ms; }
 };
 }
