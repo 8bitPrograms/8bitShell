@@ -278,7 +278,9 @@ jobs:
           if-no-files-found: error
   draft-release:
     needs: [plan, native, legacy-linux, legacy-windows]
-    if: always() && needs.native.result == 'success' && (needs.legacy-linux.result == 'success' || needs.legacy-linux.result == 'skipped') && (needs.legacy-windows.result == 'success' || needs.legacy-windows.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || inputs.publish_draft)
+    # A version tag push drafts. A manual dispatch drafts only with publish_draft,
+    # even on a tag ref.
+    if: always() && needs.native.result == 'success' && (needs.legacy-linux.result == 'success' || needs.legacy-linux.result == 'skipped') && (needs.legacy-windows.result == 'success' || needs.legacy-windows.result == 'skipped') && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_draft))
     runs-on: ubuntu-22.04
     permissions: { contents: write }
     steps:
