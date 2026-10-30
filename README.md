@@ -19,8 +19,9 @@ See [releases, installers, versioning and distro repositories](docs/RELEASING.md
 Copyright (C) 2026 8bitShell contributors. 8bitShell is free software under the
 GNU General Public License, version 3 or any later version; see [LICENSE](LICENSE).
 Qt remains a separate, dynamically linked LGPL-3.0/GPL-3.0 library. yaml-cpp,
-PuTTY, and libvterm remain MIT. Installer publication stays closed until the
-third-party redistribution and Windows packaging reviews are recorded.
+PuTTY, and libvterm remain MIT. The project license, third-party redistribution
+and Windows packaging tools reviews for 1.0.0 are recorded in
+[packaging/release-policy.json](packaging/release-policy.json).
 
 8bitShell is a programmable remote-access terminal with a usable Linux build and a
 native Windows 11 preview. The shared Qt Quick interface combines terminals, SFTP,
