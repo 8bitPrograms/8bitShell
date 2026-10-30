@@ -50,7 +50,7 @@ function(bitshell_patch_vterm_screen input output)
       break;
     onecell->chars[0] = (uint32_t)-1;
   }]=])
-    # Resize cursor handling from Vim 9.0.1049: https://github.com/vim/vim/commit/67578e5bcf7404d40d42876b738b72e68add1a3e
+    # Resize cursor handling adapted from Vim 9.0.1049 (comments reworded): https://github.com/vim/vim/commit/67578e5bcf7404d40d42876b738b72e68add1a3e
     replace_checked(
         [=[  /* We really expect the cursor position to be set by now */
   if(active && (new_cursor.row == -1 || new_cursor.col == -1)) {
@@ -58,11 +58,8 @@ function(bitshell_patch_vterm_screen input output)
     abort();
   }]=]
         [=[  /* We really expect the cursor position to be set by now */
-  /* Unfortunately we do get here when "new_rows" is one.  We don't want
-   * to crash, so until the above code is fixed let's just set the cursor. */
+  /* A small or reflowed screen can leave the cursor unplaced; clamp it to the screen. */
   if(active && (new_cursor.row == -1 || new_cursor.col == -1)) {
-    /* fprintf(stderr, "screen_resize failed to update cursor position\n");
-     * abort(); */
     if (new_cursor.row < 0)
       new_cursor.row = 0;
     if (new_cursor.col < 0)
