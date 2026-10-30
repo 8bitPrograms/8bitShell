@@ -190,10 +190,13 @@ def stamp_assets(out,system,cpu):
             entries.append({"name":p.name,"sha256":digest(p),"size":p.stat().st_size,"os":system,"arch":cpu,"version":v,"glibc":c.get("linuxGlibcByArch",{}).get(cpu,c["linuxGlibc"]) if system=="linux" else None,"experimental":cpu in ("x86","armv7")})
     if not entries:raise ValueError("No packages produced")
     (out/f"manifest-{system}-{cpu}.json").write_text(json.dumps(entries,indent=2)+"\n")
+# Files finalize writes. With the manifests and the assets they list, they are the
+# only files draft-release may attach (gh release create dist/release/*).
+FINALIZE_OUTPUTS=("release-manifest.json","install-index.tsv","install.sh","install.ps1","SHA256SUMS.txt")
 def finalize(out,repository):
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",repository):raise ValueError("Real owner/repository required")
-    out=Path(out);entries=[]
-    for p in sorted(out.glob("manifest-*.json")):entries+=json.loads(p.read_text())
+    out=Path(out);entries=[];manifests=sorted(out.glob("manifest-*.json"))
+    for p in manifests:entries+=json.loads(p.read_text())
     if not entries:raise ValueError("No tested package manifests")
     names=set()
     for e in entries:
@@ -201,6 +204,8 @@ def finalize(out,repository):
         if e["name"] in names:raise ValueError("Duplicate release asset")
         names.add(e["name"])
         if digest(out/e["name"])!=e["sha256"]:raise ValueError("Package changed after validation")
+    unexpected=sorted(p.name for p in out.iterdir() if p.name not in names|{m.name for m in manifests}|set(FINALIZE_OUTPUTS))
+    if unexpected:raise ValueError("Not in any package manifest, refusing to publish: "+", ".join(unexpected))
     (out/"release-manifest.json").write_text(json.dumps({"app":config()["app"],"version":version(),"repository":repository,"assets":entries},indent=2)+"\n")
     lines=[]
     for e in entries:
