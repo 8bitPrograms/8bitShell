@@ -106,6 +106,13 @@ def _windows_unelevated(args,env,timeout,workdir,readable,log_path):
     finally:
         for h in (info.hThread,info.hProcess):
             if h:k32.CloseHandle(h)
+        # Files the smoke user created (its profile dir) are readable only by that user;
+        # hand workdir back to the runner before deleting it so diagnostics can upload.
+        # Best effort: a cleanup failure must not mask the smoke result.
+        for reclaim in (["takeown","/F",str(workdir),"/R","/D","Y"],["icacls",str(workdir),"/reset","/T","/C","/Q"]):
+            try:
+                if subprocess.run(reclaim,**quiet).returncode:print(f"::warning::{reclaim[0]} on {workdir} failed; diagnostics upload may be incomplete",flush=True)
+            except Exception as exc:print(f"::warning::{reclaim[0]} on {workdir} failed: {exc}",flush=True)
         try:subprocess.run(["net","user",user,"/delete"],**quiet)
         except Exception:pass
 def smoke_run(args,env,timeout,workdir,readable):
