@@ -65,6 +65,20 @@ function(bitshell_patch_vterm_screen input output)
     if (new_cursor.col < 0)
       new_cursor.col = 0;
   }]=])
+    # Erase bounds handling from Vim patch 8.2.0989, vim/vim@a6e8bf2 (DEBUG_LOG2 renamed to DEBUG_LOG for 0.3.3)
+    replace_checked(
+        [=[      ScreenCell *cell = getcell(screen, row, col);
+
+      if(selective && cell->pen.protected_cell)]=]
+        [=[      ScreenCell *cell = getcell(screen, row, col);
+
+      if (cell == NULL)
+      {
+        DEBUG_LOG("libvterm: erase_internal() position invalid: %d / %d",
+								     row, col);
+	return 1;
+      }
+      if(selective && cell->pen.protected_cell)]=])
     get_filename_component(directory "${output}" DIRECTORY)
     file(MAKE_DIRECTORY "${directory}")
     file(CONFIGURE OUTPUT "${output}" CONTENT "${screen}" @ONLY)

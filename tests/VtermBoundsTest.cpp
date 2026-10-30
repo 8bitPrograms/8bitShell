@@ -111,6 +111,19 @@ private slots:
         terminal.write("\x1b[HOK");
         QCOMPARE(terminal.charAt(0, 0), uint32_t('O'));
     }
+    void eraseAfterZeroWidthControl() {
+        // Erasing characters after a C1 control leaves the screen usable.
+        Terminal terminal(24, 80);
+        QVERIFY(terminal.valid());
+        terminal.write("\xc2\x83" "\x1b[X");
+        terminal.write("\x1b[HOK");
+        QCOMPARE(terminal.charAt(0, 0), uint32_t('O'));
+        QCOMPARE(terminal.charAt(0, 1), uint32_t('K'));
+        int rows = 0, columns = 0;
+        vterm_get_size(terminal.vt(), &rows, &columns);
+        QCOMPARE(rows, 24);
+        QCOMPARE(columns, 80);
+    }
 };
 QTEST_APPLESS_MAIN(VtermBoundsTest)
 #include "VtermBoundsTest.moc"
