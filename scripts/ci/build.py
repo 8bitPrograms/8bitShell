@@ -45,6 +45,103 @@ def crt_windows(stage,cpu):
     for p in roots[0].glob("*.dll"):shutil.copy2(p,stage/"bin"/p.name)
     for p in (Path(vs)/"Licenses").glob("*"):
         if p.is_file() and "redist" in p.name.lower():shutil.copy2(p,stage/"share"/p.name)
+def _windows_unelevated(args,env,timeout,workdir,readable,log_path):
+    # GitHub-hosted Windows runners are elevated, and the app refuses to start
+    # elevated. Launch the smoke run with a Safer "normal user" token at Medium
+    # integrity instead, like `runas /trustlevel:0x20000`. Windows only.
+    import ctypes,msvcrt
+    from ctypes import wintypes as w
+    k32=ctypes.WinDLL("kernel32",use_last_error=True);adv=ctypes.WinDLL("advapi32",use_last_error=True)
+    command=[str(a) for a in args]
+    def fail(what):
+        code=ctypes.get_last_error()
+        raise OSError(f"Non-elevated smoke launch failed at {what}: {ctypes.FormatError(code).strip()} (Windows error {code})")
+    def call(fn,what,*fargs):
+        if not fn(*fargs):fail(what)
+    class SID_AND_ATTRIBUTES(ctypes.Structure):_fields_=[("Sid",ctypes.c_void_p),("Attributes",w.DWORD)]
+    class STARTUPINFOW(ctypes.Structure):
+        _fields_=[("cb",w.DWORD),("lpReserved",w.LPWSTR),("lpDesktop",w.LPWSTR),("lpTitle",w.LPWSTR),("dwX",w.DWORD),("dwY",w.DWORD),
+                  ("dwXSize",w.DWORD),("dwYSize",w.DWORD),("dwXCountChars",w.DWORD),("dwYCountChars",w.DWORD),("dwFillAttribute",w.DWORD),
+                  ("dwFlags",w.DWORD),("wShowWindow",w.WORD),("cbReserved2",w.WORD),("lpReserved2",ctypes.c_void_p),
+                  ("hStdInput",w.HANDLE),("hStdOutput",w.HANDLE),("hStdError",w.HANDLE)]
+    class PROCESS_INFORMATION(ctypes.Structure):_fields_=[("hProcess",w.HANDLE),("hThread",w.HANDLE),("dwProcessId",w.DWORD),("dwThreadId",w.DWORD)]
+    adv.SaferCreateLevel.argtypes=[w.DWORD,w.DWORD,w.DWORD,ctypes.POINTER(w.HANDLE),ctypes.c_void_p];adv.SaferCreateLevel.restype=w.BOOL
+    adv.SaferComputeTokenFromLevel.argtypes=[w.HANDLE,w.HANDLE,ctypes.POINTER(w.HANDLE),w.DWORD,ctypes.c_void_p];adv.SaferComputeTokenFromLevel.restype=w.BOOL
+    adv.SaferCloseLevel.argtypes=[w.HANDLE];adv.SaferCloseLevel.restype=w.BOOL
+    adv.ConvertStringSidToSidW.argtypes=[w.LPCWSTR,ctypes.POINTER(ctypes.c_void_p)];adv.ConvertStringSidToSidW.restype=w.BOOL
+    adv.ConvertSidToStringSidW.argtypes=[ctypes.c_void_p,ctypes.POINTER(ctypes.c_void_p)];adv.ConvertSidToStringSidW.restype=w.BOOL
+    adv.GetLengthSid.argtypes=[ctypes.c_void_p];adv.GetLengthSid.restype=w.DWORD
+    adv.SetTokenInformation.argtypes=[w.HANDLE,ctypes.c_int,ctypes.c_void_p,w.DWORD];adv.SetTokenInformation.restype=w.BOOL
+    adv.GetTokenInformation.argtypes=[w.HANDLE,ctypes.c_int,ctypes.c_void_p,w.DWORD,ctypes.POINTER(w.DWORD)];adv.GetTokenInformation.restype=w.BOOL
+    adv.CreateProcessAsUserW.argtypes=[w.HANDLE,w.LPCWSTR,w.LPWSTR,ctypes.c_void_p,ctypes.c_void_p,w.BOOL,w.DWORD,ctypes.c_void_p,w.LPCWSTR,ctypes.POINTER(STARTUPINFOW),ctypes.POINTER(PROCESS_INFORMATION)];adv.CreateProcessAsUserW.restype=w.BOOL
+    adv.CreateProcessWithTokenW.argtypes=[w.HANDLE,w.DWORD,w.LPCWSTR,w.LPWSTR,w.DWORD,ctypes.c_void_p,w.LPCWSTR,ctypes.POINTER(STARTUPINFOW),ctypes.POINTER(PROCESS_INFORMATION)];adv.CreateProcessWithTokenW.restype=w.BOOL
+    k32.LocalFree.argtypes=[ctypes.c_void_p];k32.LocalFree.restype=ctypes.c_void_p
+    k32.CloseHandle.argtypes=[w.HANDLE];k32.CloseHandle.restype=w.BOOL
+    k32.WaitForSingleObject.argtypes=[w.HANDLE,w.DWORD];k32.WaitForSingleObject.restype=w.DWORD
+    k32.GetExitCodeProcess.argtypes=[w.HANDLE,ctypes.POINTER(w.DWORD)];k32.GetExitCodeProcess.restype=w.BOOL
+    k32.TerminateProcess.argtypes=[w.HANDLE,w.UINT];k32.TerminateProcess.restype=w.BOOL
+    SAFER_SCOPEID_USER,SAFER_LEVELID_NORMALUSER,SAFER_LEVEL_OPEN=2,0x20000,1
+    TokenUser,TokenElevation,TokenIntegrityLevel=1,20,25
+    SE_GROUP_INTEGRITY,STARTF_USESTDHANDLES,CREATE_UNICODE_ENVIRONMENT,CREATE_NO_WINDOW=0x20,0x100,0x400,0x08000000
+    WAIT_OBJECT_0,WAIT_TIMEOUT=0,0x102
+    level=w.HANDLE();token=w.HANDLE();medium=ctypes.c_void_p();info=PROCESS_INFORMATION()
+    try:
+        call(adv.SaferCreateLevel,"SaferCreateLevel",SAFER_SCOPEID_USER,SAFER_LEVELID_NORMALUSER,SAFER_LEVEL_OPEN,ctypes.byref(level),None)
+        call(adv.SaferComputeTokenFromLevel,"SaferComputeTokenFromLevel",level,None,ctypes.byref(token),0,None)
+        # Safer leaves the integrity level at High. Lower it to Medium (S-1-16-8192).
+        call(adv.ConvertStringSidToSidW,"ConvertStringSidToSid","S-1-16-8192",ctypes.byref(medium))
+        label=SID_AND_ATTRIBUTES(medium.value,SE_GROUP_INTEGRITY)
+        call(adv.SetTokenInformation,"SetTokenInformation(TokenIntegrityLevel)",token,TokenIntegrityLevel,ctypes.byref(label),ctypes.sizeof(label)+adv.GetLengthSid(medium))
+        elevated=w.DWORD();size=w.DWORD()
+        call(adv.GetTokenInformation,"GetTokenInformation(TokenElevation)",token,TokenElevation,ctypes.byref(elevated),ctypes.sizeof(elevated),ctypes.byref(size))
+        if elevated.value:raise OSError("The Safer normal-user token is still elevated; the app would refuse to start")
+        # Python creates mkdtemp() directories with a DACL for SYSTEM, Administrators
+        # and the owner (Administrators when elevated). Administrators is deny-only in
+        # the restricted token, so grant the runner user itself access to the smoke tree.
+        adv.GetTokenInformation(token,TokenUser,None,0,ctypes.byref(size))
+        buffer=ctypes.create_string_buffer(size.value)
+        call(adv.GetTokenInformation,"GetTokenInformation(TokenUser)",token,TokenUser,buffer,size,ctypes.byref(size))
+        text=ctypes.c_void_p();call(adv.ConvertSidToStringSidW,"ConvertSidToStringSid",SID_AND_ATTRIBUTES.from_buffer(buffer).Sid,ctypes.byref(text))
+        try:user=ctypes.wstring_at(text.value)
+        finally:k32.LocalFree(text)
+        for path,rights in ((workdir,"F"),(readable,"RX")):
+            subprocess.run(["icacls",str(path),"/grant",f"*{user}:(OI)(CI){rights}","/T","/C","/Q"],check=True,stdout=subprocess.DEVNULL)
+        block=ctypes.create_unicode_buffer("".join(f"{k}={v}\0" for k,v in sorted(env.items(),key=lambda kv:kv[0].upper()))+"\0")
+        cmdline=ctypes.create_unicode_buffer(subprocess.list2cmdline(command))
+        with open(log_path,"wb") as output:
+            handle=msvcrt.get_osfhandle(output.fileno());os.set_handle_inheritable(handle,True)
+            startup=STARTUPINFOW();startup.cb=ctypes.sizeof(startup);startup.dwFlags=STARTF_USESTDHANDLES
+            startup.hStdOutput=startup.hStdError=handle
+            flags=CREATE_UNICODE_ENVIRONMENT|CREATE_NO_WINDOW
+            if not adv.CreateProcessAsUserW(token,command[0],cmdline,None,None,True,flags,block,None,ctypes.byref(startup),ctypes.byref(info)):
+                first=ctypes.get_last_error()
+                if not adv.CreateProcessWithTokenW(token,0,command[0],cmdline,flags,block,None,ctypes.byref(startup),ctypes.byref(info)):
+                    fail(f"CreateProcessWithTokenW (CreateProcessAsUserW failed first with Windows error {first})")
+            waited=k32.WaitForSingleObject(info.hProcess,int(timeout*1000))
+            if waited==WAIT_TIMEOUT:
+                k32.TerminateProcess(info.hProcess,1);k32.WaitForSingleObject(info.hProcess,10000)
+                raise subprocess.TimeoutExpired(command,timeout)
+            if waited!=WAIT_OBJECT_0:fail("WaitForSingleObject")
+            code=w.DWORD();call(k32.GetExitCodeProcess,"GetExitCodeProcess",info.hProcess,ctypes.byref(code))
+        return code.value
+    finally:
+        for h in (info.hThread,info.hProcess,token.value):
+            if h:k32.CloseHandle(h)
+        if medium.value:k32.LocalFree(medium)
+        if level.value:adv.SaferCloseLevel(level)
+def smoke_run(args,env,timeout,workdir,readable):
+    if platform.system()!="Windows":return run(args,env=env,timeout=timeout)
+    command=[str(a) for a in args];log=workdir/"smoke-output.log"
+    try:code=_windows_unelevated(command,env,timeout,workdir,readable,log)
+    except subprocess.TimeoutExpired:
+        _hosted_error(f"Smoke test timed out after {timeout}s: {' '.join(command)}");raise
+    finally:
+        output=log.read_text("utf-8","replace") if log.exists() else ""
+        sys.stdout.write(output);sys.stdout.flush()
+        with (ROOT/"build"/"package-step.log").open("a",encoding="utf-8",errors="replace") as handle:handle.write(f"\n$ (non-elevated) {' '.join(command)}\n{output}")
+    if code:
+        _hosted_error(output or f"exit {code:#x}")
+        raise subprocess.CalledProcessError(code,command,output=f"Non-elevated smoke run exited with {code} ({code:#010x})")
 def smoke(stage,system):
     c=config();app=c["app"];out=ROOT/"build"/("package-smoke-"+system+"-"+arch());out.mkdir(parents=True,exist_ok=True)
     runtime=Path(tempfile.mkdtemp(prefix="run-",dir=out));temporary=runtime/"temp";temporary.mkdir()
@@ -59,7 +156,7 @@ def smoke(stage,system):
     elif system=="macos":exe=stage/(app+".app")/"Contents/MacOS"/app
     else:exe=stage/app;env["PATH"]="/usr/bin:/bin"
     args=[exe,"--smoke-test",out] if app=="8bitPad" else [exe,"--screenshot",out/"shell.png","--window-size","1280x800"]
-    run(args,env=env,timeout=600)
+    smoke_run(args,env,600,out,stage)
     if app=="8bitShell":
         helper=(stage/"bin" if system=="linux" else exe.parent)/("8bitShell-askpass.exe" if system=="windows" else "8bitShell-askpass")
         for key in ("BIT8SHELL_ASKPASS_SOCKET","BIT8SHELL_ASKPASS_TOKEN","SSH_ASKPASS_PROMPT"):
@@ -70,6 +167,10 @@ def smoke(stage,system):
 def main():
     (ROOT/"build").mkdir(exist_ok=True);(ROOT/"build"/"package-step.log").write_text("")
     p=argparse.ArgumentParser();p.add_argument("--qt-root",required=True);p.add_argument("--jobs",type=int,default=2);p.add_argument("--build-only",action="store_true");a=p.parse_args()
+    # TEMP(fix/main-ci-win-macos): revert before merge. PRs pass --build-only, so force
+    # packaging and the packaged smoke test on this branch to verify the fix. Skip
+    # notarization: PRs never get a real signing identity, only ad-hoc signing.
+    if os.environ.get("GITHUB_HEAD_REF")=="fix/main-ci-win-macos":a.build_only=False;os.environ.pop("MACOS_NOTARY_APPLE_ID",None)
     c=config();cpu=arch();system={"Windows":"windows","Linux":"linux","Darwin":"macos"}[platform.system()]
     build=ROOT/"build"/f"ci-{system}-{cpu}";sdk=Path(a.qt_root).resolve();stage=ROOT/"build"/f"stage-{system}-{cpu}";out=ROOT/"dist/release";out.mkdir(parents=True,exist_ok=True)
     args=["cmake","-S",ROOT,"-B",build,"-G","Ninja","-DCMAKE_BUILD_TYPE=Release","-DCMAKE_TRY_COMPILE_CONFIGURATION=Release",f"-DCMAKE_PREFIX_PATH={sdk}","-DBUILD_TESTING=ON",f'-D{c["environment"]}_BUNDLE_RUNTIME=ON']
@@ -95,7 +196,9 @@ def main():
     else:
         # QLocalServer file sockets live in the temp directory. sun_path is only
         # 108 bytes, and the workspace path is longer than that.
-        short=Path("/tmp/b8-ci");short.mkdir(mode=0o700,exist_ok=True)
+        # PrivateFile walks every parent with O_NOFOLLOW. On macOS /tmp is a
+        # symlink to /private/tmp, so use the real path or private saves fail.
+        short=Path("/tmp").resolve()/"b8-ci";short.mkdir(mode=0o700,exist_ok=True)
         env["TEMP"]=str(short);env["TMP"]=str(short);env["TMPDIR"]=str(short)
     if system=="windows":env["QT_QPA_FONTDIR"]=str(Path(os.environ["WINDIR"])/"Fonts")
     elif system=="linux":env["QT_QPA_FONTDIR"]="/usr/share/fonts/truetype/dejavu"
