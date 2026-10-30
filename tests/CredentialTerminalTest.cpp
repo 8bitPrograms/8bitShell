@@ -439,7 +439,8 @@ private slots:
     }
 
     // A credential bound to a shell tab answers only ssh's prompt for its
-    // user at the host typed in this tab.
+    // user at the host typed in this tab. A prompt that is not ssh's, answered
+    // by the user, closes the window: the later exact prompt gets nothing (QC2 F1).
     void boundTabIgnoresSudo() {
         Tab tab; attach(tab);
         QString error;
@@ -456,10 +457,57 @@ private slots:
         QVERIFY(!received().contains("SUDO:"));
         tab.view.sendText(QStringLiteral("mine\r"));
         QVERIFY(waitForReceived("SUDO:mine\n"));
-        QVERIFY(waitForReceived("GOT_PW:" + secret + "\n"));
+        QVERIFY(waitFor(tab, "jdoe@fake.test's password: "));
+        QTest::qWait(300);
+        QVERIFY(!received().contains("GOT_PW"));
+        tab.view.sendText(QStringLiteral("typed\r"));
+        QVERIFY(waitForReceived("GOT_PW:typed\n"));
+        QVERIFY(!received().contains(secret));
+        QVERIFY(tab.view.credentialBound());
         tab.view.unbindCredential();
         QVERIFY(!tab.view.credentialBound());
         QVERIFY(changed.count() >= 2);
+        TerminalTestAccess::stopFixture(tab.view);
+    }
+
+    // QC2 F1: the typed ssh logs in with a key, so ssh never asks. The remote
+    // shell's prompt ends the window, and a later exact prompt gets nothing.
+    void boundTabKeyLoginGetsNothingLater() {
+        Tab tab; attach(tab);
+        QString error;
+        QVERIFY(TerminalTestAccess::startFixture(tab.view, QStringLiteral("stty -echo; sleep 0.3;"
+            "printf 'Last login: Fri Oct 30\\njdoe@fake:~$ '; sleep 0.3; printf 'ssh jdoe@fake.test\\n';") + passwordPrompt("a", "LATER")
+            + QStringLiteral("sleep 5"), error));
+        QVERIFY(tab.view.bindCredential(m_passwordId));
+        TerminalTestAccess::noteTypedSsh(tab.view, {{QStringLiteral("host"), QStringLiteral("fake.test")}, {QStringLiteral("user"), QStringLiteral("jdoe")}});
+        QVERIFY(waitFor(tab, "ssh jdoe@fake.test\r\njdoe@fake.test's password: "));
+        QTest::qWait(300);
+        QVERIFY(!received().contains("LATER"));
+        tab.view.sendText(QStringLiteral("typed\r"));
+        QVERIFY(waitForReceived("LATER:typed\n"));
+        QVERIFY(!received().contains(secret));
+        TerminalTestAccess::stopFixture(tab.view);
+    }
+
+    // QC2 F1: ssh asked something the credential does not cover and the user
+    // answered it. After the login, a later exact prompt gets nothing.
+    void userAnsweredPromptThenLoginGetsNothingLater() {
+        Tab tab; attach(tab);
+        QString error;
+        QVERIFY2(TerminalTestAccess::startCredentialFixture(tab.view, session(m_passwordId), QStringLiteral(
+            "stty -echo; printf '(jdoe@fake.test) Parola: ';") + reads("a", "PAROLA")
+            + QStringLiteral("printf 'Welcome\\n'; sleep 0.3;") + passwordPrompt("b", "LATER") + QStringLiteral("sleep 5"),
+            error), qPrintable(error));
+        QVERIFY(waitFor(tab, "Parola: "));
+        QVERIFY(waitForStatus(tab, QStringLiteral("Answer it yourself")));
+        tab.view.sendText(QStringLiteral("mine\r"));
+        QVERIFY(waitForReceived("PAROLA:mine\n"));
+        QVERIFY(waitFor(tab, "Welcome\r\njdoe@fake.test's password: "));
+        QTest::qWait(300);
+        QVERIFY(!received().contains("LATER"));
+        tab.view.sendText(QStringLiteral("typed\r"));
+        QVERIFY(waitForReceived("LATER:typed\n"));
+        QVERIFY(!received().contains(secret));
         TerminalTestAccess::stopFixture(tab.view);
     }
 
@@ -501,6 +549,7 @@ private slots:
 
     // CyberArk: the session keeps its user, ssh logs in to the gateway with the
     // route's login string, and only the gateway's prompt gets the password.
+    // A later prompt for the target host is not ssh's for the gateway login.
     void psmpCredentialAnswersTheGateway() {
         Tab tab; attach(tab);
         QVariantMap profile = psmpSession();
@@ -510,17 +559,17 @@ private slots:
         profile.insert(QStringLiteral("credential"), m_passwordId);
         QString error; QVariantMap effective;
         QVERIFY2(TerminalTestAccess::startCredentialFixture(tab.view, profile, QStringLiteral("stty -echo;")
-            + passwordPrompt("a", "TARGET", QStringLiteral("jdoe@db.example.test"))
-            + passwordPrompt("b", "GATEWAY", *login + QStringLiteral("@psmp.example.test")) + QStringLiteral("sleep 5"),
+            + passwordPrompt("a", "GATEWAY", *login + QStringLiteral("@psmp.example.test"))
+            + passwordPrompt("b", "TARGET", QStringLiteral("jdoe@db.example.test")) + QStringLiteral("sleep 5"),
             error, &effective), qPrintable(error));
         QCOMPARE(effective.value(QStringLiteral("user")), profile.value(QStringLiteral("user")));
         QCOMPARE(effective.value(QStringLiteral("authenticationMode")).toString(), QStringLiteral("password"));
+        QVERIFY(waitForReceived("GATEWAY:" + secret + "\n"));
         QVERIFY(waitFor(tab, "jdoe@db.example.test's password: "));
         QTest::qWait(300);
-        QVERIFY(received().isEmpty());
+        QVERIFY(!received().contains("TARGET"));
         tab.view.sendText(QStringLiteral("x\r"));
-        QVERIFY(waitForReceived("GATEWAY:" + secret + "\n"));
-        QVERIFY(received().contains("TARGET:x\n"));
+        QVERIFY(waitForReceived("TARGET:x\n"));
         QCOMPARE(received().count(secret), 1);
         TerminalTestAccess::stopFixture(tab.view);
     }

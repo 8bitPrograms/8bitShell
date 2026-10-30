@@ -100,7 +100,7 @@ target_compile_definitions(yaml_configuration_test PRIVATE BIT8SHELL_TEST_SOURCE
 
 qt_add_executable(win32_input_test Win32InputTest.cpp)
 target_include_directories(win32_input_test PRIVATE "${PROJECT_SOURCE_DIR}/src/terminal/include")
-target_link_libraries(win32_input_test PRIVATE Qt6::Test Qt6::Gui)
+target_link_libraries(win32_input_test PRIVATE Qt6::Test Qt6::Gui bitshell_core)
 set_target_properties(win32_input_test PROPERTIES WIN32_EXECUTABLE FALSE)
 bitshell_register_qtest(win32_input_test)
 set_tests_properties(win32_input_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
