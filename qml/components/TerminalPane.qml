@@ -119,14 +119,7 @@ Rectangle {
             host: "",
             user: "",
             port: 22,
-            identityKey: "",
-            identityFile: "",
-            proxyJump: "",
-            forwardX11: false,
-            agentForwarding: false,
-            compression: false,
-            backspaceMode: "default",
-            psmpJson: "",
+            profileJson: "{}",
             localCommandJson: "[]",
             localProfileJson: "{}",
             zoom: 100,
@@ -224,23 +217,8 @@ Rectangle {
         if (index < 0 || index >= tabsModel.count)
             return ({})
         const tab = tabsModel.get(index)
-        if (tab.mode === "profile") {
-            const result = ({
-                name: tab.profileName,
-                host: tab.host,
-                user: tab.user,
-                port: tab.port,
-                identityKey: tab.identityKey,
-                identityFile: tab.identityFile,
-                proxyJump: tab.proxyJump,
-                forwardX11: tab.forwardX11,
-                agentForwarding: tab.agentForwarding,
-                compression: tab.compression,
-                backspaceMode: tab.backspaceMode
-            })
-            if (tab.psmpJson) result.psmp = JSON.parse(tab.psmpJson)
-            return result
-        }
+        if (tab.mode === "profile")
+            return JSON.parse(tab.profileJson)
         let target = tab.launchCommand.trim()
         if (tab.mode !== "quick" || target.length === 0)
             return ({})
@@ -328,14 +306,8 @@ Rectangle {
         tab.host = profile.host || ""
         tab.user = profile.user || ""
         tab.port = profile.port || 22
-        tab.identityKey = profile.identityKey || ""
-        tab.identityFile = profile.identityFile || ""
-        tab.proxyJump = profile.proxyJump || ""
-        tab.forwardX11 = Boolean(profile.forwardX11)
-        tab.agentForwarding = Boolean(profile.agentForwarding)
-        tab.compression = Boolean(profile.compression)
-        tab.backspaceMode = profile.backspaceMode || "default"
-        tab.psmpJson = profile.psmp ? JSON.stringify(profile.psmp) : ""
+        // Keep the whole prepared profile: its id and authenticationMode select the saved password.
+        tab.profileJson = JSON.stringify(profile)
         tabsModel.append(tab)
         activate(tabsModel.count - 1)
     }
@@ -411,8 +383,7 @@ Rectangle {
         const source = tabsModel.get(index)
         const copy = defaultTabData()
         for (const key of ["mode", "launchCommand", "profileName", "catalogId", "host", "user",
-                           "port", "identityKey", "identityFile", "proxyJump", "forwardX11", "agentForwarding",
-                           "compression", "backspaceMode", "psmpJson", "localCommandJson", "localProfileJson", "zoom", "tabColor"])
+                           "port", "profileJson", "localCommandJson", "localProfileJson", "zoom", "tabColor"])
             copy[key] = source[key]
         copy.label = source.label + " copy"
         copy.monitoring = false
@@ -906,18 +877,7 @@ Rectangle {
                     required property string label
                     required property string mode
                     required property string launchCommand
-                    required property string profileName
-                    required property string host
-                    required property string user
-                    required property int port
-                    required property string identityKey
-                    required property string identityFile
-                    required property string proxyJump
-                    required property bool forwardX11
-                    required property bool agentForwarding
-                    required property bool compression
-                    required property string backspaceMode
-                    required property string psmpJson
+                    required property string profileJson
                     required property string localCommandJson
                     required property string localProfileJson
                     required property int zoom
@@ -946,23 +906,7 @@ Rectangle {
                     localCommand: JSON.parse(localCommandJson)
                     localProfile: JSON.parse(localProfileJson)
                     zoomPercent: zoom
-                    profile: {
-                        const result = ({
-                        name: profileName,
-                        host: host,
-                        user: user,
-                        port: port,
-                        identityKey: identityKey,
-                        identityFile: identityFile,
-                        proxyJump: proxyJump,
-                        forwardX11: forwardX11,
-                        agentForwarding: agentForwarding,
-                        compression: compression,
-                        backspaceMode: backspaceMode
-                        })
-                        if (psmpJson) result.psmp = JSON.parse(psmpJson)
-                        return result
-                    }
+                    profile: JSON.parse(profileJson)
                     onZoomStepRequested: function(steps) {
                         root.adjustZoom(sessionDelegate.index, steps)
                     }
