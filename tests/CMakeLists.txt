@@ -50,6 +50,8 @@ set_tests_properties(startup_directory_test PROPERTIES TIMEOUT 50
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
 bitshell_add_core_test(ssh_key_store_test SshKeyStoreTest.cpp)
 bitshell_add_core_test(password_store_test PasswordStoreTest.cpp)
+bitshell_add_core_test(credential_flow_test CredentialFlowTest.cpp)
+bitshell_add_core_test(credential_store_test CredentialStoreTest.cpp)
 bitshell_add_core_test(password_broker_test PasswordBrokerTest.cpp)
 bitshell_add_core_test(password_auxiliary_test PasswordAuxiliaryTest.cpp)
 add_dependencies(password_broker_test bitshell_askpass)
@@ -198,6 +200,19 @@ target_link_libraries(local_ssh_terminal_test PRIVATE Qt6::Test bitshell_termina
 bitshell_register_qtest(local_ssh_terminal_test)
 set_tests_properties(local_ssh_terminal_test PROPERTIES TIMEOUT 90
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+if(NOT WIN32)
+    # Prompt-emitting /bin/sh scripts stand in for ssh.
+    qt_add_executable(credential_terminal_test CredentialTerminalTest.cpp FakeSecretVault.h FakeKeychain.h)
+    # Its own directory: the test puts a fake ssh at openssh/ssh beside the
+    # binary (where the app looks for a bundled ssh), which must not reach
+    # other tests running in parallel.
+    set_target_properties(credential_terminal_test PROPERTIES WIN32_EXECUTABLE FALSE
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/credential_terminal")
+    target_link_libraries(credential_terminal_test PRIVATE Qt6::Test bitshell_terminal)
+    bitshell_register_qtest(credential_terminal_test)
+    set_tests_properties(credential_terminal_test PROPERTIES TIMEOUT 90
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+endif()
 if(WIN32)
     add_executable(local_ssh_fixture LocalSshFixture.cpp)
     add_dependencies(local_ssh_terminal_test local_ssh_fixture windows_terminal_fixture)
@@ -215,6 +230,8 @@ set_tests_properties(ui_interaction_test PROPERTIES
 if(NOT WIN32)
 qt_add_executable(performance_benchmark PerformanceBenchmark.cpp)
 target_link_libraries(performance_benchmark PRIVATE Qt6::Gui Qt6::Quick bitshell_terminal bitshell_core)
+qt_add_executable(credential_benchmark CredentialBenchmark.cpp)
+target_link_libraries(credential_benchmark PRIVATE Qt6::Gui Qt6::Quick bitshell_terminal bitshell_core)
 endif()
 
 qt_add_executable(performance_regression_test PerformanceRegressionTest.cpp)

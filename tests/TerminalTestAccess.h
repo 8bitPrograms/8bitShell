@@ -32,7 +32,10 @@ public:
     static quint64 localPromptGeneration(const TerminalView& terminal) { return terminal.m_localPromptGeneration; }
     static qint64 processId(const TerminalView& terminal) { return terminal.m_process.processId(); }
     static bool localSshPending(const TerminalView& terminal) { return !terminal.m_pendingLocalSshCommand.isEmpty(); }
-    static bool passwordHandoffActive(const TerminalView& terminal) { return terminal.m_passwordBroker != nullptr; }
+    // A saved secret is waiting to answer this tab's login prompt.
+    static bool passwordHandoffActive(const TerminalView& terminal) {
+        return terminal.m_credential != nullptr || terminal.m_passwordBroker != nullptr;
+    }
     static void resetLocalScreen(TerminalView& terminal) { terminal.resetTerminal(); }
     static bool localKeyConsumed(const TerminalView& terminal, int key) { return terminal.m_consumedLocalSshKeys.contains(key); }
     static QVariantMap sshConnectionSummary(const QVariantMap& profile, const QString& mode) {
@@ -95,5 +98,27 @@ public:
     static bool startFixture(TerminalView& terminal, const QString& script, QString& error) {
         return terminal.m_process.start(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), script}, terminal.m_columns, terminal.m_rows, &error);
     }
+    static void useCredentials(TerminalView& terminal, core::SecretVault& vault, const QString& path) {
+        terminal.m_credentialVault = &vault;
+        terminal.m_credentialPath = path;
+    }
+    // The saved-session path of launchSshProfile, with a script in place of ssh.
+    // notice is the non-blocking message shown when a secret cannot be used.
+    static void prepareCredential(TerminalView& terminal, const QVariantMap& profile, QVariantMap& effective, QString& notice) {
+        terminal.prepareCredential(profile, effective, notice);
+    }
+    static bool startCredentialFixture(TerminalView& terminal, const QVariantMap& profile, const QString& script,
+                                       QString& error, QVariantMap* effective = nullptr, QString* notice = nullptr) {
+        QVariantMap prepared;
+        QString message;
+        terminal.prepareCredential(profile, prepared, message);
+        if (effective) *effective = prepared;
+        if (notice) *notice = message;
+        if (!startFixture(terminal, script, error)) { terminal.releaseCredential(); return false; }
+        terminal.armPreparedCredential();
+        return true;
+    }
+    static QVariantMap lastSshProfile(const TerminalView& terminal) { return terminal.m_lastSshProfile; }
+    static bool credentialArmed(const TerminalView& terminal) { return terminal.m_credential != nullptr; }
 };
 }
