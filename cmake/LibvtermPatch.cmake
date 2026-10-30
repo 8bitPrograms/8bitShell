@@ -96,19 +96,6 @@ function(bitshell_patch_vterm_state input output)
         string(REPLACE "${before}" "${after}" state "${state}")
         set(state "${state}" PARENT_SCOPE)
     endfunction()
-    # REP cursor handling from Vim patch 9.2.0989, vim/vim@785bb3e
-    replace_checked(
-        [=[  case 0x62: { // REP - ECMA-48 8.3.103
-    const int row_width = THISROWWIDTH(state);]=]
-        [=[  case 0x62: { // REP - ECMA-48 8.3.103
-    const int row_width = THISROWWIDTH(state);
-
-    // ECMA-48 repeats the preceding graphic character; when none was
-    // printed yet "combine_width" is zero and the loop below would never
-    // advance the cursor.  Ignore the control then, like xterm does.
-    if(state->combine_width < 1)
-      break;
-]=])
     # Local guard, no upstream fix: ignore tab stop columns outside the screen.
     replace_checked(
         [=[static void set_col_tabstop(VTermState *state, int col)
@@ -139,6 +126,19 @@ static void clear_col_tabstop(VTermState *state, int col)
   unsigned char mask = 1 << (col & 7);
   state->tabstops[col >> 3] &= ~mask;
 }]=])
+    # REP cursor handling from Vim patch 9.2.0989, vim/vim@785bb3e
+    replace_checked(
+        [=[  case 0x62: { // REP - ECMA-48 8.3.103
+    const int row_width = THISROWWIDTH(state);]=]
+        [=[  case 0x62: { // REP - ECMA-48 8.3.103
+    const int row_width = THISROWWIDTH(state);
+
+    // ECMA-48 repeats the preceding graphic character; when none was
+    // printed yet "combine_width" is zero and the loop below would never
+    // advance the cursor.  Ignore the control then, like xterm does.
+    if(state->combine_width < 1)
+      break;
+]=])
     get_filename_component(directory "${output}" DIRECTORY)
     file(MAKE_DIRECTORY "${directory}")
     file(CONFIGURE OUTPUT "${output}" CONTENT "${state}" @ONLY)
