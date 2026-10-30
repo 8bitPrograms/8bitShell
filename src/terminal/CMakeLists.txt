@@ -3,6 +3,8 @@ qt_add_library(bitshell_terminal STATIC)
 target_sources(bitshell_terminal
     PRIVATE
         src/TerminalView.cpp
+        src/TerminalViewCredentials.cpp
+        src/TerminalViewCredentials.h
         src/BroadcastController.cpp
     PUBLIC
         FILE_SET HEADERS
