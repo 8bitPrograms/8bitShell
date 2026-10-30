@@ -193,11 +193,24 @@ def stamp_assets(out,system,cpu):
 # Files finalize writes. With the manifests and the assets they list, they are the
 # only files draft-release may attach (gh release create dist/release/*).
 FINALIZE_OUTPUTS=("release-manifest.json","install-index.tsv","install.sh","install.ps1","SHA256SUMS.txt")
+def release_asset_names(c,v):
+    # Every name a manifest entry may carry for version v: the RELEASE_ASSETS of each
+    # configured target, and the source bundles build.py writes on Linux runners.
+    # A stray manifest (an old version, an unknown CPU) cannot vouch for other names.
+    names={f'{c["app"]}-{v}-source.tar.gz',f'{c["app"]}-{v}-qt-{c["qtVersion"]}-source.tar.gz'}
+    for target in c["platforms"]["stable"]+c["platforms"]["experimental"]:
+        system,cpu=target.split("-",1)
+        names|={f'{c["app"]}-{v}-{target}{suffix}' for suffix in RELEASE_ASSETS[system]}
+        if system=="linux":names.add(f'{c["app"]}-{v}-runtime-{cpu}-source.tar.gz')
+    return names
 def finalize(out,repository):
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",repository):raise ValueError("Real owner/repository required")
     out=Path(out);entries=[];manifests=sorted(out.glob("manifest-*.json"))
     for p in manifests:entries+=json.loads(p.read_text())
     if not entries:raise ValueError("No tested package manifests")
+    v=version();allowed=release_asset_names(config(),v)
+    foreign=sorted({str(e["name"]) for e in entries if e["name"] not in allowed or e.get("version")!=v})
+    if foreign:raise ValueError(f"Not a {v} release asset, refusing to publish: "+", ".join(foreign))
     names=set()
     for e in entries:
         if Path(e["name"]).name!=e["name"] or "/" in e["name"] or "\\" in e["name"]:raise ValueError("Unsafe asset name")
