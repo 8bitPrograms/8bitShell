@@ -210,9 +210,10 @@ void TerminalViewTest::macroBytesClipboardSelectionAndCustomKeys() {
     terminal.sendMacro(QStringLiteral("abc"), true);
     QCOMPARE(confirmations.size(), 2);
     QTest::qWait(50);
-    QVERIFY(!output.contains("1b 5b 32 30 30"));
+    // GNU od separates bytes with one space, BSD/macOS od pads wider columns.
+    QVERIFY(!output.simplified().contains("1b 5b 32 30 30"));
     terminal.confirmPaste(true);
-    QTRY_VERIFY(output.contains("1b 5b 32 30 30 7e 61 62 63 1b 5b 32 30 31 7e 0d"));
+    QTRY_VERIFY(output.simplified().contains("1b 5b 32 30 30 7e 61 62 63 1b 5b 32 30 31 7e 0d"));
     terminal.selectAll();
     QVERIFY(terminal.hasSelection());
     QGuiApplication::clipboard()->setText(QStringLiteral("clipboard sentinel"));
@@ -251,7 +252,7 @@ void TerminalViewTest::macroBytesClipboardSelectionAndCustomKeys() {
         QTest::keyClick(&window, insert ? Qt::Key_Insert : Qt::Key_V,
                         insert ? Qt::ShiftModifier : Qt::ControlModifier | Qt::ShiftModifier);
         QTest::keyClick(&window, Qt::Key_Return);
-        QTRY_VERIFY(output.contains("1b 5b 32 30 30 7e 61 62 63 1b 5b 32 30 31 7e 0d"));
+        QTRY_VERIFY(output.simplified().contains("1b 5b 32 30 30 7e 61 62 63 1b 5b 32 30 31 7e 0d"));
     }
 }
 
