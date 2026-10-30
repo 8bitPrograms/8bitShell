@@ -9,8 +9,10 @@
     include(${CMAKE_CURRENT_LIST_DIR}/LibvtermPatch.cmake)
     bitshell_patch_vterm("${bitshell_vterm_source_SOURCE_DIR}/src/parser.c" "${CMAKE_CURRENT_BINARY_DIR}/vterm-patched/parser.c")
     bitshell_patch_vterm_screen("${bitshell_vterm_source_SOURCE_DIR}/src/screen.c" "${CMAKE_CURRENT_BINARY_DIR}/vterm-patched/screen.c")
-    add_library(bitshell_vterm STATIC "${CMAKE_CURRENT_BINARY_DIR}/vterm-patched/parser.c" "${CMAKE_CURRENT_BINARY_DIR}/vterm-patched/screen.c")
-    foreach(source encoding keyboard mouse pen state unicode vterm)
+    bitshell_patch_vterm_state("${bitshell_vterm_source_SOURCE_DIR}/src/state.c" "${CMAKE_CURRENT_BINARY_DIR}/vterm-patched/state.c")
+    add_library(bitshell_vterm STATIC "${CMAKE_CURRENT_BINARY_DIR}/vterm-patched/parser.c" "${CMAKE_CURRENT_BINARY_DIR}/vterm-patched/screen.c"
+        "${CMAKE_CURRENT_BINARY_DIR}/vterm-patched/state.c")
+    foreach(source encoding keyboard mouse pen unicode vterm)
         target_sources(bitshell_vterm PRIVATE "${bitshell_vterm_source_SOURCE_DIR}/src/${source}.c")
     endforeach()
     set_target_properties(bitshell_vterm PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES)

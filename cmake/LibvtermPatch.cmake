@@ -30,15 +30,72 @@ endfunction()
 # the first visible row, never to row -1 in the screen allocation.
 function(bitshell_patch_vterm_screen input output)
     file(READ "${input}" screen)
-    set(before "while(REFLOW && old_lineinfo && old_row >= 0 && old_lineinfo[old_row].continuation)")
-    string(FIND "${screen}" "${before}" found)
-    if(found EQUAL -1)
-        message(FATAL_ERROR "Pinned libvterm screen changed; review the local reflow patch")
-    endif()
-    string(REPLACE "${before}"
-        "while(REFLOW && old_lineinfo && old_row > 0 && old_lineinfo[old_row].continuation)"
-        screen "${screen}")
+    function(replace_checked before after)
+        string(FIND "${screen}" "${before}" found)
+        if(found EQUAL -1)
+            message(FATAL_ERROR "Pinned libvterm screen changed; review the local screen patch")
+        endif()
+        string(REPLACE "${before}" "${after}" screen "${screen}")
+        set(screen "${screen}" PARENT_SCOPE)
+    endfunction()
+    replace_checked(
+        "while(REFLOW && old_lineinfo && old_row >= 0 && old_lineinfo[old_row].continuation)"
+        "while(REFLOW && old_lineinfo && old_row > 0 && old_lineinfo[old_row].continuation)")
+    # Wide glyph bounds handling from Vim patch 8.2.1353, vim/vim@8b89614
+    replace_checked(
+        [=[    getcell(screen, pos.row, pos.col + col)->chars[0] = (uint32_t)-1;]=]
+        [=[  {
+    ScreenCell *onecell = getcell(screen, pos.row, pos.col + col);
+    if (onecell == NULL)
+      break;
+    onecell->chars[0] = (uint32_t)-1;
+  }]=])
+    # Resize cursor handling from Vim patch 9.0.1049, vim/vim@67578e5, comments reworded
+    replace_checked(
+        [=[  /* We really expect the cursor position to be set by now */
+  if(active && (new_cursor.row == -1 || new_cursor.col == -1)) {
+    fprintf(stderr, "screen_resize failed to update cursor position\n");
+    abort();
+  }]=]
+        [=[  /* We really expect the cursor position to be set by now */
+  /* A small or reflowed screen can leave the cursor unplaced; clamp it to the screen. */
+  if(active && (new_cursor.row == -1 || new_cursor.col == -1)) {
+    if (new_cursor.row < 0)
+      new_cursor.row = 0;
+    if (new_cursor.col < 0)
+      new_cursor.col = 0;
+  }]=])
     get_filename_component(directory "${output}" DIRECTORY)
     file(MAKE_DIRECTORY "${directory}")
     file(CONFIGURE OUTPUT "${output}" CONTENT "${screen}" @ONLY)
+endfunction()
+
+# REP with no preceding graphic character is ignored rather than repeating a
+# zero-width glyph; cursor handling carried from Vim's libvterm.
+function(bitshell_patch_vterm_state input output)
+    file(READ "${input}" state)
+    function(replace_checked before after)
+        string(FIND "${state}" "${before}" found)
+        if(found EQUAL -1)
+            message(FATAL_ERROR "Pinned libvterm state changed; review the local state patch")
+        endif()
+        string(REPLACE "${before}" "${after}" state "${state}")
+        set(state "${state}" PARENT_SCOPE)
+    endfunction()
+    # REP cursor handling from Vim patch 9.2.0989, vim/vim@785bb3e
+    replace_checked(
+        [=[  case 0x62: { // REP - ECMA-48 8.3.103
+    const int row_width = THISROWWIDTH(state);]=]
+        [=[  case 0x62: { // REP - ECMA-48 8.3.103
+    const int row_width = THISROWWIDTH(state);
+
+    // ECMA-48 repeats the preceding graphic character; when none was
+    // printed yet "combine_width" is zero and the loop below would never
+    // advance the cursor.  Ignore the control then, like xterm does.
+    if(state->combine_width < 1)
+      break;
+]=])
+    get_filename_component(directory "${output}" DIRECTORY)
+    file(MAKE_DIRECTORY "${directory}")
+    file(CONFIGURE OUTPUT "${output}" CONTENT "${state}" @ONLY)
 endfunction()
