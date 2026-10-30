@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QByteArray>
+#include <QByteArrayView>
 #include <QString>
 #include <QStringList>
 #include <QProcessEnvironment>
@@ -32,6 +33,10 @@ public:
     void stop();
     void resize(int columns, int rows);
     void write(QByteArray data);
+    // Queues a secret (a typed password). The queue keeps it in one block and
+    // zeroes every byte once written or dropped. Later write()s into the same
+    // queue are handled the same way until it drains; other input has no cost.
+    void writeSecret(QByteArrayView data);
     [[nodiscard]] bool canWrite(qsizetype bytes) const;
     void setEraseCharacter(char value);
     [[nodiscard]] char eraseCharacter() const;
@@ -50,6 +55,7 @@ signals:
     void errorOccurred(const QString& message);
 
 private:
+    friend class PtyProcessTestAccess;
     static void setError(QString* destination, const QString& message);
 #ifdef Q_OS_WIN
     struct WindowsState;
@@ -60,6 +66,7 @@ private:
     void handleReadyRead();
     void flushWriteBuffer();
     void finishFromMaster();
+    void discardWriteBuffer();
 
     int m_masterFd = -1;
     int m_replicaFd = -1; // macOS only: see PtyProcess::start()
@@ -67,6 +74,7 @@ private:
     std::unique_ptr<QSocketNotifier> m_readNotifier;
     std::unique_ptr<QSocketNotifier> m_writeNotifier;
     QByteArray m_writeBuffer;
+    bool m_secretQueued = false; // m_writeBuffer holds secret bytes
     char m_eraseCharacter = '\x7f';
 #endif
     bool m_interactiveShell = false;

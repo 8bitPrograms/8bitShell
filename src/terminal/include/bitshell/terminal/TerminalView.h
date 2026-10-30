@@ -334,6 +334,7 @@ private:
     void armPreparedCredential();
     void releaseCredential();
     void answerCredentialPrompt(const QByteArray& data);
+    void targetBoundCredential(const QVariantMap& connection);
     [[nodiscard]] bitshell::core::SecretVault& credentialVault() const;
     void rebuildSearchMatchesLocked(bool incremental = false);
     void revealCurrentSearchMatchLocked();
@@ -394,6 +395,9 @@ private:
     quint64 m_credentialGeneration = 0;
     bitshell::core::SecretVault* m_credentialVault = nullptr; // null: OS keychain
     QString m_credentialPath;                                 // empty: default file
+    // A bound tab forgets its credential after this. Matches the ssh-agent
+    // lifetime of a bound key; tests shorten it.
+    int m_boundCredentialMs = 5 * 60 * 1000;
     bitshell::core::SessionLogger m_logger;
     bitshell::core::HighlightEngine m_highlightEngine;
     QList<bitshell::core::HighlightRule> m_highlightRules =
