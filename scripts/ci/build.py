@@ -153,10 +153,6 @@ def smoke(stage,system):
 def main():
     (ROOT/"build").mkdir(exist_ok=True);(ROOT/"build"/"package-step.log").write_text("")
     p=argparse.ArgumentParser();p.add_argument("--qt-root",required=True);p.add_argument("--jobs",type=int,default=2);p.add_argument("--build-only",action="store_true");a=p.parse_args()
-    # TEMP(fix/main-ci-win-macos): revert before merge. PRs pass --build-only, so force
-    # packaging and the packaged smoke test on this branch to verify the fix. Skip
-    # notarization: PRs never get a real signing identity, only ad-hoc signing.
-    if os.environ.get("GITHUB_HEAD_REF")=="fix/main-ci-win-macos":a.build_only=False;os.environ.pop("MACOS_NOTARY_APPLE_ID",None)
     c=config();cpu=arch();system={"Windows":"windows","Linux":"linux","Darwin":"macos"}[platform.system()]
     build=ROOT/"build"/f"ci-{system}-{cpu}";sdk=Path(a.qt_root).resolve();stage=ROOT/"build"/f"stage-{system}-{cpu}";out=ROOT/"dist/release";out.mkdir(parents=True,exist_ok=True)
     args=["cmake","-S",ROOT,"-B",build,"-G","Ninja","-DCMAKE_BUILD_TYPE=Release","-DCMAKE_TRY_COMPILE_CONFIGURATION=Release",f"-DCMAKE_PREFIX_PATH={sdk}","-DBUILD_TESTING=ON",f'-D{c["environment"]}_BUNDLE_RUNTIME=ON']
