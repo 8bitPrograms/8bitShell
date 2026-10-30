@@ -109,6 +109,47 @@ function(bitshell_patch_vterm_state input output)
     if(state->combine_width < 1)
       break;
 ]=])
+    # Scroll region resize bound from Vim patch 9.2.0990, vim/vim@cb34d15
+    replace_checked(
+        [=[  if(!downward && !rightward)
+    return;
+
+  int rows = rect.end_row - rect.start_row;]=]
+        [=[  if(!downward && !rightward)
+    return;
+
+  // A degenerate rectangle makes "rows" or "cols" below negative, which
+  // inverts the clamping of "downward" and "rightward" and results in a
+  // negative height being passed to memmove().  This happens when a scroll
+  // region survives a resize that made the terminal smaller.
+  if(rect.end_row <= rect.start_row || rect.end_col <= rect.start_col)
+    return;
+
+  int rows = rect.end_row - rect.start_row;]=])
+    replace_checked(
+        [=[  if(state->scrollregion_right > -1)
+    UBOUND(state->scrollregion_right, state->cols);
+
+  VTermStateFields fields = {]=]
+        [=[  if(state->scrollregion_right > -1)
+    UBOUND(state->scrollregion_right, state->cols);
+
+  // The near edges need clamping as well, otherwise a scroll region that
+  // was set before the terminal was made smaller can start past the last
+  // row or column.  Drop a region that no longer makes sense, just like
+  // DECSTBM and DECSLRM do when it is set.
+  UBOUND(state->scrollregion_top, state->rows);
+  UBOUND(state->scrollregion_left, state->cols);
+  if(SCROLLREGION_BOTTOM(state) <= state->scrollregion_top) {
+    state->scrollregion_top = 0;
+    state->scrollregion_bottom = -1;
+  }
+  if(SCROLLREGION_RIGHT(state) <= state->scrollregion_left) {
+    state->scrollregion_left = 0;
+    state->scrollregion_right = -1;
+  }
+
+  VTermStateFields fields = {]=])
     get_filename_component(directory "${output}" DIRECTORY)
     file(MAKE_DIRECTORY "${directory}")
     file(CONFIGURE OUTPUT "${output}" CONTENT "${state}" @ONLY)

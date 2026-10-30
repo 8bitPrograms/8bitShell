@@ -124,6 +124,33 @@ private slots:
         QCOMPARE(rows, 24);
         QCOMPARE(columns, 80);
     }
+    void scrollRegionAfterShrink() {
+        // A scroll region set below the new last row is dropped on resize.
+        Terminal terminal(24, 80);
+        QVERIFY(terminal.valid());
+        terminal.write("\x1b[20;24r");
+        terminal.resize(2, 80);
+        terminal.write("\x1b[S" "\x1b[T" "\n\n\n");
+        terminal.write("\x1b[HOK");
+        QCOMPARE(terminal.charAt(0, 0), uint32_t('O'));
+        QCOMPARE(terminal.charAt(0, 1), uint32_t('K'));
+    }
+    void scrollRegionShrinkAndGrow() {
+        // Scrolling after a shrink, then growing again, keeps the screen usable.
+        Terminal terminal(31, 91);
+        QVERIFY(terminal.valid());
+        terminal.write("\x1b[16r");
+        terminal.resize(6, 17);
+        terminal.write("\x1b[S");
+        terminal.resize(12, 83);
+        terminal.write("\x1b[HOK");
+        QCOMPARE(terminal.charAt(0, 0), uint32_t('O'));
+        QCOMPARE(terminal.charAt(0, 1), uint32_t('K'));
+        int rows = 0, columns = 0;
+        vterm_get_size(terminal.vt(), &rows, &columns);
+        QCOMPARE(rows, 12);
+        QCOMPARE(columns, 83);
+    }
 };
 QTEST_APPLESS_MAIN(VtermBoundsTest)
 #include "VtermBoundsTest.moc"
