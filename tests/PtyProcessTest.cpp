@@ -114,7 +114,7 @@ namespace {
 // Bash before 4.4 does not let "history -a" append while every history line
 // came from the current session, so a fresh HISTFILE stays empty until exit.
 // macOS ships bash 3.2 as /bin/bash; Homebrew installs a current one.
-QString bashWithPromptHistoryAppend() {
+QString bashWithPromptHistoryAppend(QStringList& rejected) {
     const QStringList candidates{QStandardPaths::findExecutable(QStringLiteral("bash")),
                                  QStringLiteral("/opt/homebrew/bin/bash"),
                                  QStringLiteral("/usr/local/bin/bash"),
@@ -130,17 +130,22 @@ QString bashWithPromptHistoryAppend() {
         const int major = version[0].toInt();
         const int minor = version[1].toInt();
         if (major > 4 || (major == 4 && minor >= 4)) return candidate;
+        rejected << QStringLiteral("%1 is %2.%3").arg(candidate).arg(major).arg(minor);
     }
     return {};
 }
 }  // namespace
 
 void PtyProcessTest::interactiveBashFlushesHistoryAtEveryPrompt() {
-    const QString bash = bashWithPromptHistoryAppend();
+    QStringList rejected;
+    const QString bash = bashWithPromptHistoryAppend(rejected);
     if (bash.isEmpty()) {
-        QSKIP("Needs bash 4.4 or newer (PATH, /opt/homebrew/bin, /usr/local/bin, /bin); "
-              "older bash does not append history at the prompt for a new history file.");
+        const QByteArray reason = "Needs bash 4.4 or newer (PATH, /opt/homebrew/bin, /usr/local/bin, /bin); "
+            "older bash does not append history at the prompt for a new history file. Found: "
+            + rejected.join(QStringLiteral(", ")).toUtf8();
+        QSKIP(reason.constData());
     }
+    qInfo("Using %s", qPrintable(bash));
     QTemporaryDir home;
     QVERIFY(home.isValid());
     const QByteArray oldHome = qgetenv("HOME");

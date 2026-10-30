@@ -311,7 +311,12 @@ void PerformanceRegressionTest::concurrentHiddenPtysKeepCompleteLogs() {
         QByteArray expected;
         for (int row = 0; row < 600; ++row) expected += QStringLiteral("PTY%1 row %2\r\n").arg(index).arg(row).toUtf8();
         expected += QStringLiteral("END:%1\r\n").arg(index).toUtf8();
-        QCOMPARE(log.readAll(), expected);
+        const QByteArray actual = log.readAll();
+        // QCOMPARE truncates long values; a lost tail shows only in the end.
+        QVERIFY2(actual == expected, qPrintable(QStringLiteral("PTY%1 log: %2 bytes, expected %3; ends %4, expected end %5")
+            .arg(index).arg(actual.size()).arg(expected.size())
+            .arg(QString::fromLatin1(actual.right(64).toPercentEncoding(" ")),
+                 QString::fromLatin1(expected.right(64).toPercentEncoding(" ")))));
         auto& terminal = *terminals[std::size_t(index)];
         terminal.setSearchText(QStringLiteral("END:%1").arg(index));
         QCOMPARE(terminal.searchMatchCount(), 1);

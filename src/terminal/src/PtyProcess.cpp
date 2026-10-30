@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <csignal>
 #include <cstring>
 #include <utility>
@@ -162,6 +163,16 @@ bool PtyProcess::start(const QString& program,
 
     m_masterFd = masterFd;
     m_childPid = static_cast<qint64>(childPid);
+#ifdef Q_OS_DARWIN
+    // macOS discards PTY output that is still unread when the last replica
+    // descriptor closes: ptsclose() drains for at most 60 ticks (~0.6 s) and
+    // then flushes. Holding our own replica means the child's exit is never
+    // that last close. The kernel then waits for us to read everything
+    // (proc_exit -> ttywait, no timeout) and revokes the terminal, so the
+    // master still reads EOF and finishFromMaster() runs as before.
+    if (const char* replica = ::ptsname(masterFd))
+        m_replicaFd = ::open(replica, O_RDWR | O_NOCTTY | O_CLOEXEC);
+#endif
     m_readNotifier = std::make_unique<QSocketNotifier>(m_masterFd, QSocketNotifier::Read, this);
     m_writeNotifier =
         std::make_unique<QSocketNotifier>(m_masterFd, QSocketNotifier::Write, this);
@@ -189,6 +200,10 @@ void PtyProcess::stop() {
     if (m_masterFd >= 0) {
         ::close(m_masterFd);
         m_masterFd = -1;
+    }
+    if (m_replicaFd >= 0) {
+        ::close(m_replicaFd);
+        m_replicaFd = -1;
     }
 
     if (m_childPid > 0) {
@@ -341,6 +356,10 @@ void PtyProcess::finishFromMaster() {
     if (m_masterFd >= 0) {
         ::close(m_masterFd);
         m_masterFd = -1;
+    }
+    if (m_replicaFd >= 0) {
+        ::close(m_replicaFd);
+        m_replicaFd = -1;
     }
 
     int exitCode = -1;
