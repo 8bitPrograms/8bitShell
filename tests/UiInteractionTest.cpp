@@ -903,11 +903,19 @@ void UiInteractionTest::catalogBackgroundAndFolderRightClickCreateInExpectedLoca
     // A no-result view gives us genuine catalog background even when the test
     // fixture is larger than the viewport.
     sidebar->setProperty("filterText", QStringLiteral("no-right-click-match.example.test"));
+    // An early failure must not leave the catalog filtered for the drag tests.
+    const auto clearFilter = qScopeGuard([sidebar] { sidebar->setProperty("filterText", QString{}); });
     QTRY_COMPARE(sidebar->property("searchResultCount").toInt(), 0);
     QTest::mouseClick(m_window, Qt::RightButton, Qt::NoModifier,
                       itemPoint(contextTarget, 0.73), 20);
     auto* catalogMenu = namedObject(QStringLiteral("catalogAreaContextMenu"));
     QTRY_VERIFY(catalogMenu && catalogMenu->property("opened").toBool());
+    // A right-click straight after the menu closes must open it again, with no
+    // settle delay (slow CI runners hit this window between steps).
+    QVERIFY(QMetaObject::invokeMethod(catalogMenu, "close"));
+    QTest::mouseClick(m_window, Qt::RightButton, Qt::NoModifier,
+                      itemPoint(contextTarget, 0.73), 20);
+    QTRY_VERIFY(catalogMenu->property("opened").toBool());
     captureFrame(QStringLiteral("catalog-background-context-menu.png"));
     clickItem(qobject_cast<QQuickItem*>(
         namedObject(QStringLiteral("catalogAreaNewSessionItem"))));

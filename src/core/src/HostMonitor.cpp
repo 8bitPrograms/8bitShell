@@ -40,7 +40,7 @@ HostMonitor::HostMonitor(QObject* parent) : QObject(parent) {
     });
     m_timeout.setSingleShot(true);
     connect(&m_timeout, &QTimer::timeout, this, [this] {
-        stop(); m_metrics.clear(); m_status = QStringLiteral("No monitoring data. Check SSH authentication and Linux /proc."); emit changed();
+        stop(); m_metrics.clear(); m_status = QStringLiteral("No monitoring data. Check SSH authentication and that the host runs Linux or macOS."); emit changed();
     });
 #ifdef Q_OS_WIN
     m_localTimer.setInterval(5000);
@@ -76,8 +76,82 @@ QByteArray HostMonitor::sampleScript() {
 PATH=/usr/bin:/bin
 export LC_ALL PATH
 if [ ! -r /proc/stat ] || [ ! -r /proc/meminfo ]; then
-  printf 'Linux /proc monitoring is unavailable\n' >&2
-  exit 1
+  if [ "$(uname -s 2>/dev/null)" != Darwin ]; then
+    printf 'Linux /proc or macOS monitoring is unavailable\n' >&2
+    exit 1
+  fi
+  # macOS: iostat -w 5 stays resident, flushes one line per interval (the
+  # first is the since-boot average) and ends "us sy id 1m 5m 15m". It is
+  # both the clock and the CPU/load source; awk adds vm_stat, netstat -ibn
+  # and df -Pk per line and prints the same frame as the Linux loop.
+  PATH=/usr/bin:/bin:/usr/sbin:/sbin
+  iostat -w 5 | awk '
+function first(cmd,  v) { v = ""; cmd | getline v; close(cmd); return v }
+BEGIN {
+  host = first("hostname")
+  memkb = first("sysctl -n hw.memsize") / 1024
+  boot = first("sysctl -n kern.boottime")
+  boot = match(boot, /[0-9]+/) ? substr(boot, RSTART, RLENGTH) + 0 : 0
+}
+NF < 6 || $NF !~ /^[0-9.]+$/ || $(NF-3) !~ /^[0-9]+$/ { next }
+{
+  cputotal += 100; cpuidle += $(NF-3)
+  srand(); now = srand()
+  page = 4096; avail = 0; cmd = "vm_stat"
+  while ((cmd | getline line) > 0) {
+    if (line ~ /page size of/ && match(line, /[0-9]+/)) {
+      page = substr(line, RSTART, RLENGTH)
+    } else if (line ~ /^Pages (free|inactive|speculative):/) {
+      sub(/^[^:]*:[ \t]*/, "", line); avail += line
+    }
+  }
+  close(cmd)
+  rx = 0; tx = 0; cmd = "netstat -ibn"
+  while ((cmd | getline line) > 0) {
+    n = split(line, f, " ")
+    if (n >= 10 && f[3] ~ /^<Link#/ && f[1] !~ /^lo[0-9]/) {
+      rx += f[n-4]; tx += f[n-1]
+    }
+  }
+  close(cmd)
+  nd = 0; rootdisk = ""; split("", seen); cmd = "df -Pk"
+  while ((cmd | getline line) > 0) {
+    n = split(line, f, " ")
+    if (n < 6 || f[2] !~ /^[0-9]+$/ || f[2] <= 0) continue
+    mount = f[6]
+    for (k = 7; k <= n; k++) mount = mount " " f[k]
+    if (mount !~ /^\//) continue
+    if (mount != "/System/Volumes/Data" && mount ~ /^\/(dev|System\/Volumes|Library\/Developer\/CoreSimulator)(\/|$)/) continue
+    used = f[2] - f[4]
+    pct = int((used * 100 + f[2] - 1) / f[2]) "%"
+    if (mount == "/") rootdisk = pct " " f[4]
+    dev = f[1]
+    if (match(dev, /^\/dev\/disk[0-9]+/)) dev = substr(dev, 1, RLENGTH)
+    if (dev in seen) continue
+    seen[dev] = 1
+    gsub(/%/, "%25", mount); gsub(/ /, "%20", mount)
+    nd++; du[nd] = used; dl[nd] = mount " " used " " f[2] " " pct
+  }
+  close(cmd)
+  for (k = 1; k <= nd && k <= 4; k++) {
+    b = k
+    for (j = k + 1; j <= nd; j++) if (du[j] > du[b]) b = j
+    t = du[k]; du[k] = du[b]; du[b] = t
+    t = dl[k]; dl[k] = dl[b]; dl[b] = t
+  }
+  print "__BIT8SHELL_MONITOR_BEGIN__"
+  print "host " host
+  printf "cpu %.0f %.0f\n", cputotal, cpuidle
+  printf "memory %.0f %.0f\n", memkb, avail * page / 1024
+  printf "uptime %.0f\n", now - boot
+  print "load " $(NF-2) " " $(NF-1) " " $NF
+  printf "net %.0f %.0f\n", rx, tx
+  if (rootdisk != "") print "disk " rootdisk
+  for (k = 1; k <= nd && k <= 4; k++) print "diskfs " dl[k]
+  print "__BIT8SHELL_MONITOR_END__"
+  fflush()
+}'
+  exit
 fi
 while :; do
   printf '__BIT8SHELL_MONITOR_BEGIN__\n'

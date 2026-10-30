@@ -36,7 +36,7 @@ Menu {
         NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 90 }
     }
 
-    exit: Transition {
-        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 65 }
-    }
+    // No exit transition on purpose: Qt's Menu ignores popup() while an exit
+    // transition is still running (QQuickMenu::setVisible returns early while
+    // visible is still true), so a quick second right-click opened nothing.
 }

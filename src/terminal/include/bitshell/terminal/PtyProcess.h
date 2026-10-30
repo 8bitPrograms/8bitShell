@@ -62,6 +62,7 @@ private:
     void finishFromMaster();
 
     int m_masterFd = -1;
+    int m_replicaFd = -1; // macOS only: see PtyProcess::start()
     qint64 m_childPid = -1;
     std::unique_ptr<QSocketNotifier> m_readNotifier;
     std::unique_ptr<QSocketNotifier> m_writeNotifier;

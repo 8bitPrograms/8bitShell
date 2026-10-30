@@ -2,6 +2,9 @@
 
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
+#include <QProcess>
+#include <QStandardPaths>
 #include <QDir>
 #include <QScopeGuard>
 #include <QTemporaryDir>
@@ -107,7 +110,42 @@ void PtyProcessTest::rejectsInvalidArgumentsAndBoundsInput() {
     QVERIFY(errors.first().first().toString().contains(QStringLiteral("queue limit")));
 }
 
+namespace {
+// Bash before 4.4 does not let "history -a" append while every history line
+// came from the current session, so a fresh HISTFILE stays empty until exit.
+// macOS ships bash 3.2 as /bin/bash; Homebrew installs a current one.
+QString bashWithPromptHistoryAppend(QStringList& rejected) {
+    const QStringList candidates{QStandardPaths::findExecutable(QStringLiteral("bash")),
+                                 QStringLiteral("/opt/homebrew/bin/bash"),
+                                 QStringLiteral("/usr/local/bin/bash"),
+                                 QStringLiteral("/bin/bash")};
+    for (const QString& candidate : candidates) {
+        if (candidate.isEmpty() || !QFileInfo(candidate).isExecutable()) continue;
+        QProcess probe;
+        probe.start(candidate, {QStringLiteral("-c"),
+                                QStringLiteral("printf '%s %s' \"${BASH_VERSINFO[0]}\" \"${BASH_VERSINFO[1]}\"")});
+        if (!probe.waitForFinished(3000)) continue;
+        const QList<QByteArray> version = probe.readAllStandardOutput().split(' ');
+        if (version.size() != 2) continue;
+        const int major = version[0].toInt();
+        const int minor = version[1].toInt();
+        if (major > 4 || (major == 4 && minor >= 4)) return candidate;
+        rejected << QStringLiteral("%1 is %2.%3").arg(candidate).arg(major).arg(minor);
+    }
+    return {};
+}
+}  // namespace
+
 void PtyProcessTest::interactiveBashFlushesHistoryAtEveryPrompt() {
+    QStringList rejected;
+    const QString bash = bashWithPromptHistoryAppend(rejected);
+    if (bash.isEmpty()) {
+        const QByteArray reason = "Needs bash 4.4 or newer (PATH, /opt/homebrew/bin, /usr/local/bin, /bin); "
+            "older bash does not append history at the prompt for a new history file. Found: "
+            + rejected.join(QStringLiteral(", ")).toUtf8();
+        QSKIP(reason.constData());
+    }
+    qInfo("Using %s", qPrintable(bash));
     QTemporaryDir home;
     QVERIFY(home.isValid());
     const QByteArray oldHome = qgetenv("HOME");
@@ -125,7 +163,7 @@ void PtyProcessTest::interactiveBashFlushesHistoryAtEveryPrompt() {
     PtyProcess process;
     process.setInteractiveShell(true);
     QString error;
-    QVERIFY2(process.start(QStringLiteral("/bin/bash"),
+    QVERIFY2(process.start(bash,
                            {QStringLiteral("--noprofile"), QStringLiteral("--norc"),
                             QStringLiteral("-i")},
                            80, 24, &error),
