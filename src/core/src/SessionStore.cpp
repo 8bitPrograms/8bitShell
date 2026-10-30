@@ -471,7 +471,9 @@ QVariantMap SessionStore::describeSshCandidate(const QVariantMap& profile, bool 
     const QString identityKey = profile.value(QStringLiteral("identityKey")).toString();
     const QString identityFile = profile.value(QStringLiteral("identityFile")).toString();
     QString authentication = QStringLiteral("Default SSH authentication");
-    if (profile.value(QStringLiteral("authenticationMode")) == QStringLiteral("password")) {
+    if (!profile.value(QStringLiteral("credential")).toString().isEmpty()) {
+        authentication = QStringLiteral("Saved credential");
+    } else if (profile.value(QStringLiteral("authenticationMode")) == QStringLiteral("password")) {
         authentication = PasswordStore::has(passwordProfile(profile))
                              ? QStringLiteral("Saved password") : QStringLiteral("Password");
     } else if (identityKey == QStringLiteral("none")) {
@@ -1571,6 +1573,7 @@ SessionStore::Session SessionStore::fromMap(const QVariantMap& values,
     session.identityFile = stringValue(QStringLiteral("identityFile"), session.identityFile);
     session.proxyJump = stringValue(QStringLiteral("proxyJump"), session.proxyJump);
     session.authenticationMode = stringValue(QStringLiteral("authenticationMode"), session.authenticationMode);
+    session.credential = stringValue(QStringLiteral("credential"), session.credential);
     if (values.contains(QStringLiteral("connection"))) session.connection = values.value(QStringLiteral("connection")).toMap();
     if (values.contains(QStringLiteral("port"))) {
         session.port = std::clamp(values.value(QStringLiteral("port")).toInt(), 1, 65535);
@@ -1598,7 +1601,7 @@ SessionStore::Session SessionStore::fromMap(const QVariantMap& values,
 }
 
 QVariantMap SessionStore::toMap(const Session& session) {
-    return {
+    QVariantMap map{
         {QStringLiteral("id"), session.id},
         {QStringLiteral("name"), session.name},
         {QStringLiteral("host"), session.host},
@@ -1616,6 +1619,10 @@ QVariantMap SessionStore::toMap(const Session& session) {
         {QStringLiteral("authenticationMode"), session.authenticationMode},
         {QStringLiteral("connection"), session.connection},
     };
+    // Only when set: every catalog row is built from this map, and files
+    // stay readable by older versions.
+    if (!session.credential.isEmpty()) map.insert(QStringLiteral("credential"), session.credential);
+    return map;
 }
 
 QString SessionStore::normalizeFolderPath(const QString& path) {
@@ -1718,7 +1725,8 @@ bool SessionStore::validateYaml(const QVariantMap& document, QString& error) {
     };
     const QStringList strings{QStringLiteral("id"), QStringLiteral("name"), QStringLiteral("host"),
         QStringLiteral("user"), QStringLiteral("folder"), QStringLiteral("identityKey"), QStringLiteral("identityFile"),
-        QStringLiteral("proxyJump"), QStringLiteral("backspaceMode"), QStringLiteral("authenticationMode")};
+        QStringLiteral("proxyJump"), QStringLiteral("backspaceMode"), QStringLiteral("authenticationMode"),
+        QStringLiteral("credential")};
     const QStringList booleans{QStringLiteral("forwardX11"), QStringLiteral("agentForwarding"), QStringLiteral("compression")};
     QSet<QString> ids;
     for (const auto& value : sessions.toList()) {
@@ -1757,6 +1765,10 @@ bool SessionStore::validateYaml(const QVariantMap& document, QString& error) {
         const auto authentication = row.value(QStringLiteral("authenticationMode"), QStringLiteral("auto")).toString();
         if (authentication != QStringLiteral("auto") && authentication != QStringLiteral("password")) {
             error = QStringLiteral("authenticationMode must be auto or password."); return false;
+        }
+        const auto credential = row.value(QStringLiteral("credential")).toString();
+        if (!credential.isEmpty() && (QUuid::fromString(credential).isNull() || authentication != QStringLiteral("auto"))) {
+            error = QStringLiteral("credential must be a saved credential id, with authenticationMode auto."); return false;
         }
         if (!QStringList{QStringLiteral("default"), QStringLiteral("bs"), QStringLiteral("del")}.contains(mode)) {
             error = QStringLiteral("backspaceMode must be default, bs or del."); return false;

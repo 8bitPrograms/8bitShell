@@ -338,9 +338,31 @@ std::expected<void, QString> backendWrite(const QString&, const QByteArray&) {
 }
 std::expected<void, QString> backendRemove(const QString&) { return {}; }
 #endif
+
+// Tests may stand in for the OS keychain; see PasswordStore::useTestKeychain.
+// Windows keeps DPAPI, which works everywhere and stores the secret itself
+// in the slot file, so the hook does not apply there.
+PasswordStore::TestKeychain* testKeychain = nullptr;
+#ifdef Q_OS_WIN
+constexpr bool testKeychainApplies = false;
+#else
+constexpr bool testKeychainApplies = true;
+#endif
+std::expected<QByteArray, QString> keychainRead(const QString& slot) {
+    return testKeychainApplies && testKeychain ? testKeychain->read(slot) : backendRead(slot);
+}
+std::expected<void, QString> keychainWrite(const QString& slot, const QByteArray& secret) {
+    return testKeychainApplies && testKeychain ? testKeychain->write(slot, secret) : backendWrite(slot, secret);
+}
+std::expected<void, QString> keychainRemove(const QString& slot) {
+    return testKeychainApplies && testKeychain ? testKeychain->remove(slot) : backendRemove(slot);
+}
 } // namespace
 
+void PasswordStore::useTestKeychain(TestKeychain* keychain) { testKeychain = keychain; }
+
 QString PasswordStore::backendName() {
+    if (testKeychainApplies && testKeychain) return QStringLiteral("Test keychain");
 #ifdef Q_OS_WIN
     return QStringLiteral("Windows account encryption (DPAPI)");
 #elif defined(Q_OS_MACOS)
@@ -353,6 +375,7 @@ QString PasswordStore::backendName() {
 }
 
 bool PasswordStore::available() {
+    if (testKeychainApplies && testKeychain) return true;
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
     return true;
 #elif defined(Q_OS_LINUX)
@@ -393,7 +416,7 @@ std::expected<QByteArray, QString> PasswordStore::read(const QVariantMap& profil
     if (slot.isEmpty()) return std::unexpected(eligibilityError());
     if (!QFileInfo::exists(slotPath(slot))) return QByteArray{};
     if (!markerPresent(slot)) return std::unexpected(QStringLiteral("The saved password reference is invalid."));
-    auto result = backendRead(slot);
+    auto result = keychainRead(slot);
     if (!result || result->isEmpty()) return result;
     if (!validPassword(*result)) {
         result->fill('\0');
@@ -414,7 +437,7 @@ std::expected<void, QString> PasswordStore::write(const QVariantMap& profile, co
     if (!PrivateFile::write(slotPath(slot), markerMagic + slot.toLatin1() + '\n', error))
         return std::unexpected(QStringLiteral("Cannot save the local password reference: %1").arg(error));
 #endif
-    const auto result = backendWrite(slot, password);
+    const auto result = keychainWrite(slot, password);
 #ifndef Q_OS_WIN
     if (!result && !existingMarker) (void)QFile::remove(slotPath(slot));
 #endif
@@ -425,12 +448,108 @@ std::expected<void, QString> PasswordStore::remove(const QVariantMap& profile) {
     const auto slot = slotId(profile);
     if (slot.isEmpty() || !QFileInfo::exists(slotPath(slot))) return {};
     if (!markerPresent(slot)) return std::unexpected(QStringLiteral("The saved password reference is invalid; it was not followed."));
-    const auto removed = backendRemove(slot);
+    const auto removed = keychainRemove(slot);
     if (!removed) return removed;
     // The path is generated from a SHA-256 slot and never from profile text.
     // QFile removes a link itself rather than traversing its destination.
     if (!QFile::remove(slotPath(slot)))
         return std::unexpected(QStringLiteral("Cannot remove the local saved-password record."));
+    return {};
+}
+
+// Credential-profile secrets reuse the backends above without changing them.
+// A header entry holds the chunk count; chunks hold base64 text, which fits
+// the backends' 4096-byte, no-line-break limit.
+namespace {
+constexpr qsizetype secretChunkBytes = 3000;
+constexpr int maximumSecretChunks = 22; // about 64 KiB
+
+QString secretSlot(const QString& reference, int chunk) {
+    QString root = QDir::cleanPath(QDir(Platform::appConfigDirectory()).absolutePath());
+#ifdef Q_OS_WIN
+    root = root.toCaseFolded();
+#endif
+    const QJsonArray key{QStringLiteral("8bitShell/credential/v1"), root, reference, chunk};
+    return QString::fromLatin1(QCryptographicHash::hash(QJsonDocument(key).toJson(QJsonDocument::Compact),
+                                                       QCryptographicHash::Sha256).toHex());
+}
+
+std::expected<void, QString> removeSlot(const QString& slot) {
+    const auto removed = keychainRemove(slot);
+#ifdef Q_OS_WIN
+    // The DPAPI backend keeps the value in this file; its remove is a no-op.
+    if (QFileInfo::exists(slotPath(slot)) && !QFile::remove(slotPath(slot)))
+        return std::unexpected(QStringLiteral("Cannot remove the local credential record."));
+#endif
+    return removed;
+}
+
+std::expected<int, QString> secretChunks(const QString& reference) {
+#ifdef Q_OS_WIN
+    if (!QFileInfo::exists(slotPath(secretSlot(reference, -1)))) return 0;
+#endif
+    auto header = keychainRead(secretSlot(reference, -1));
+    if (!header) return std::unexpected(header.error());
+    if (header->isEmpty()) return 0;
+    bool valid = false;
+    const int count = header->startsWith("v1:") ? header->sliced(3).toInt(&valid) : 0;
+    header->fill('\0');
+    if (!valid || count < 1 || count > maximumSecretChunks)
+        return std::unexpected(QStringLiteral("The saved credential record is invalid."));
+    return count;
+}
+} // namespace
+
+std::expected<QByteArray, QString> PasswordStore::readSecret(const QString& reference) {
+    const auto count = secretChunks(reference);
+    if (!count) return std::unexpected(count.error());
+    QByteArray encoded;
+    for (int chunk = 0; chunk < *count; ++chunk) {
+        auto part = keychainRead(secretSlot(reference, chunk));
+        if (!part || part->isEmpty()) {
+            encoded.fill('\0');
+            return std::unexpected(part ? QStringLiteral("The saved credential is incomplete.") : part.error());
+        }
+        encoded += *part;
+        part->fill('\0');
+    }
+    auto decoded = QByteArray::fromBase64Encoding(encoded, QByteArray::AbortOnBase64DecodingErrors);
+    encoded.fill('\0');
+    if (!decoded) return std::unexpected(QStringLiteral("The saved credential contains invalid data."));
+    return std::move(decoded.decoded);
+}
+
+std::expected<void, QString> PasswordStore::writeSecret(const QString& reference, const QByteArray& secret) {
+    if (reference.isEmpty() || secret.isEmpty())
+        return std::unexpected(QStringLiteral("Nothing to save."));
+    QByteArray encoded = secret.toBase64();
+    const int count = static_cast<int>((encoded.size() + secretChunkBytes - 1) / secretChunkBytes);
+    if (count > maximumSecretChunks) {
+        encoded.fill('\0');
+        return std::unexpected(QStringLiteral("The secret is larger than 64 KiB."));
+    }
+    const auto previous = secretChunks(reference);
+    for (int chunk = 0; chunk < count; ++chunk) {
+        QByteArray part = encoded.sliced(chunk * secretChunkBytes,
+                                         std::min(secretChunkBytes, encoded.size() - chunk * secretChunkBytes));
+        const auto written = keychainWrite(secretSlot(reference, chunk), part);
+        part.fill('\0');
+        if (!written) { encoded.fill('\0'); return written; }
+    }
+    encoded.fill('\0');
+    const auto header = keychainWrite(secretSlot(reference, -1), "v1:" + QByteArray::number(count));
+    if (!header) return header;
+    for (int chunk = count; previous && chunk < *previous; ++chunk)
+        (void)removeSlot(secretSlot(reference, chunk));
+    return {};
+}
+
+std::expected<void, QString> PasswordStore::removeSecret(const QString& reference) {
+    const auto count = secretChunks(reference);
+    const auto header = removeSlot(secretSlot(reference, -1));
+    for (int chunk = 0; chunk < (count ? *count : maximumSecretChunks); ++chunk)
+        (void)removeSlot(secretSlot(reference, chunk));
+    if (!header) return header;
     return {};
 }
 } // namespace bitshell::core
