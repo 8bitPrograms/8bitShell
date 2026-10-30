@@ -96,6 +96,36 @@ function(bitshell_patch_vterm_state input output)
         string(REPLACE "${before}" "${after}" state "${state}")
         set(state "${state}" PARENT_SCOPE)
     endfunction()
+    # Local guard, no upstream fix: ignore tab stop columns outside the screen.
+    replace_checked(
+        [=[static void set_col_tabstop(VTermState *state, int col)
+{
+  unsigned char mask = 1 << (col & 7);
+  state->tabstops[col >> 3] |= mask;
+}
+
+static void clear_col_tabstop(VTermState *state, int col)
+{
+  unsigned char mask = 1 << (col & 7);
+  state->tabstops[col >> 3] &= ~mask;
+}]=]
+        [=[static void set_col_tabstop(VTermState *state, int col)
+{
+  /* Ignore columns outside the screen (local 8bitShell guard). */
+  if(col < 0 || col >= state->cols)
+    return;
+  unsigned char mask = 1 << (col & 7);
+  state->tabstops[col >> 3] |= mask;
+}
+
+static void clear_col_tabstop(VTermState *state, int col)
+{
+  /* Ignore columns outside the screen (local 8bitShell guard). */
+  if(col < 0 || col >= state->cols)
+    return;
+  unsigned char mask = 1 << (col & 7);
+  state->tabstops[col >> 3] &= ~mask;
+}]=])
     # REP cursor handling from Vim patch 9.2.0989, vim/vim@785bb3e
     replace_checked(
         [=[  case 0x62: { // REP - ECMA-48 8.3.103

@@ -72,6 +72,20 @@ private:
 class VtermBoundsTest : public QObject {
     Q_OBJECT
 private slots:
+    void tabStopAfterZeroWidthControl() {
+        // Tab stop changes after a C1 control leave the default tab stops alone.
+        Terminal terminal(24, 80);
+        QVERIFY(terminal.valid());
+        terminal.write("\xc2\x83" "\x1b[g");
+        terminal.write("\x1b[H" "\xc2\x83" "\x1bH");
+        terminal.write("\x1b[H\tX");
+        QCOMPARE(terminal.charAt(0, 8), uint32_t('X'));
+        terminal.write("\tY");
+        QCOMPARE(terminal.charAt(0, 16), uint32_t('Y'));
+        terminal.write("\x1b[2;1HOK");
+        QCOMPARE(terminal.charAt(1, 0), uint32_t('O'));
+        QCOMPARE(terminal.charAt(1, 1), uint32_t('K'));
+    }
     void repWideGlyphAtRowEnd() {
         // Repeating a wide glyph must keep its continuation cells inside the row.
         Terminal terminal(24, 80);
