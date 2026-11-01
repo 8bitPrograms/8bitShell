@@ -1,0 +1,77 @@
+### 1. BEFORE (995eac9 code + 995eac9 workflow)
+upload globs native: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+upload globs legacy-linux: ['dist/release/*']
+upload globs legacy-windows: ['dist/release/*']
+native         windows-x64  : stamped 4, uploaded 5, strays uploaded: []
+native         windows-arm64: stamped 4, uploaded 5, strays uploaded: []
+native         linux-x64  : stamped 5, uploaded 10, strays uploaded: []
+native         linux-arm64: stamped 5, uploaded 8, strays uploaded: []
+legacy-linux   linux-x86  : stamped 5, uploaded 11, strays uploaded: ['8bitShell-1.0.0-linux-x86.build.log', '8bitShell-1.0.0-linux-x86.pdb', '8bitShell-1.0.0-linux-x86.zip.part']
+legacy-linux   linux-armv7: stamped 5, uploaded 11, strays uploaded: ['8bitShell-1.0.0-linux-armv7.build.log', '8bitShell-1.0.0-linux-armv7.pdb', '8bitShell-1.0.0-linux-armv7.zip.part']
+legacy-windows windows-x86  : stamped 4, uploaded 10, strays uploaded: ['8bitShell-1.0.0-windows-x86.build.log', '8bitShell-1.0.0-windows-x86.msi.log', '8bitShell-1.0.0-windows-x86.pdb', '8bitShell-1.0.0-windows-x86.wixpdb', '8bitShell-1.0.0-windows-x86.zip.part']
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 0 []
+release-manifest assets: 38; install-index rows: 10; files gh would attach: 65
+JUNK gh would attach: ['8bitShell-1.0.0-linux-armv7.build.log', '8bitShell-1.0.0-linux-armv7.pdb', '8bitShell-1.0.0-linux-armv7.zip.part', '8bitShell-1.0.0-linux-x86.build.log', '8bitShell-1.0.0-linux-x86.pdb', '8bitShell-1.0.0-linux-x86.zip.part', '8bitShell-1.0.0-windows-x86.build.log', '8bitShell-1.0.0-windows-x86.msi.log', '8bitShell-1.0.0-windows-x86.pdb', '8bitShell-1.0.0-windows-x86.wixpdb', '8bitShell-1.0.0-windows-x86.zip.part']  (also in SHA256SUMS: ['8bitShell-1.0.0-linux-armv7.build.log', '8bitShell-1.0.0-linux-armv7.pdb', '8bitShell-1.0.0-linux-armv7.zip.part', '8bitShell-1.0.0-linux-x86.build.log', '8bitShell-1.0.0-linux-x86.pdb', '8bitShell-1.0.0-linux-x86.zip.part', '8bitShell-1.0.0-windows-x86.build.log', '8bitShell-1.0.0-windows-x86.msi.log', '8bitShell-1.0.0-windows-x86.pdb', '8bitShell-1.0.0-windows-x86.wixpdb', '8bitShell-1.0.0-windows-x86.zip.part'] )
+
+### 2. AFTER (fix code + fix workflow)
+upload globs native: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+upload globs legacy-linux: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+upload globs legacy-windows: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+native         windows-x64  : stamped 4, uploaded 5, strays uploaded: []
+native         windows-arm64: stamped 4, uploaded 5, strays uploaded: []
+native         linux-x64  : stamped 5, uploaded 10, strays uploaded: []
+native         linux-arm64: stamped 5, uploaded 8, strays uploaded: []
+legacy-linux   linux-x86  : stamped 5, uploaded 8, strays uploaded: []
+legacy-linux   linux-armv7: stamped 5, uploaded 8, strays uploaded: []
+legacy-windows windows-x86  : stamped 4, uploaded 5, strays uploaded: []
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 0 []
+release-manifest assets: 38; install-index rows: 10; files gh would attach: 54
+JUNK gh would attach: []  (also in SHA256SUMS: [] )
+
+### 3. AFTER + stray that matches the *.zip glob (8bitShell-1.0.0-windows-x86-symbols.zip)
+upload globs native: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+upload globs legacy-linux: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+upload globs legacy-windows: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+native         windows-x64  : stamped 4, uploaded 5, strays uploaded: []
+native         windows-arm64: stamped 4, uploaded 5, strays uploaded: []
+native         linux-x64  : stamped 5, uploaded 10, strays uploaded: []
+native         linux-arm64: stamped 5, uploaded 8, strays uploaded: []
+legacy-linux   linux-x86  : stamped 5, uploaded 8, strays uploaded: []
+legacy-linux   linux-armv7: stamped 5, uploaded 8, strays uploaded: []
+legacy-windows windows-x86  : stamped 4, uploaded 6, strays uploaded: ['8bitShell-1.0.0-windows-x86-symbols.zip']
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 1 ['ValueError: Not in any package manifest, refusing to publish: 8bitShell-1.0.0-windows-x86-symbols.zip']
+=> gh release create is never reached; nothing published
+
+### 4. publish-boundary alone: fix finalize + OLD workflow (legacy uploads dist/release/*)
+upload globs native: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+upload globs legacy-linux: ['dist/release/*']
+upload globs legacy-windows: ['dist/release/*']
+native         windows-x64  : stamped 4, uploaded 5, strays uploaded: []
+native         windows-arm64: stamped 4, uploaded 5, strays uploaded: []
+native         linux-x64  : stamped 5, uploaded 10, strays uploaded: []
+native         linux-arm64: stamped 5, uploaded 8, strays uploaded: []
+legacy-linux   linux-x86  : stamped 5, uploaded 11, strays uploaded: ['8bitShell-1.0.0-linux-x86.build.log', '8bitShell-1.0.0-linux-x86.pdb', '8bitShell-1.0.0-linux-x86.zip.part']
+legacy-linux   linux-armv7: stamped 5, uploaded 11, strays uploaded: ['8bitShell-1.0.0-linux-armv7.build.log', '8bitShell-1.0.0-linux-armv7.pdb', '8bitShell-1.0.0-linux-armv7.zip.part']
+legacy-windows windows-x86  : stamped 4, uploaded 10, strays uploaded: ['8bitShell-1.0.0-windows-x86.build.log', '8bitShell-1.0.0-windows-x86.msi.log', '8bitShell-1.0.0-windows-x86.pdb', '8bitShell-1.0.0-windows-x86.wixpdb', '8bitShell-1.0.0-windows-x86.zip.part']
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 1 ['ValueError: Not in any package manifest, refusing to publish: 8bitShell-1.0.0-linux-armv7.build.log, 8bitShell-1.0.0-linux-armv7.pdb, 8bitShell-1.0.0-linux-armv7.zip.part, 8bitShell-1.0.0-linux-x86.build.log, 8bitShell-1.0.0-linux-x86.pdb, 8bitShell-1.0.0-linux-x86.zip.part, 8bitShell-1.0.0-windows-x86.build.log, 8bitShell-1.0.0-windows-x86.msi.log, 8bitShell-1.0.0-windows-x86.pdb, 8bitShell-1.0.0-windows-x86.wixpdb, 8bitShell-1.0.0-windows-x86.zip.part']
+=> gh release create is never reached; nothing published
+
+### 5. globs alone: OLD finalize + fixed workflow + glob-matching stray
+upload globs native: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+upload globs legacy-linux: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+upload globs legacy-windows: ['dist/release/*.zip', 'dist/release/*.tar.gz', 'dist/release/*.msi', 'dist/release/*.exe', 'dist/release/*.dmg', 'dist/release/*.deb', 'dist/release/*.rpm', 'dist/release/*.pkg.tar.zst', 'dist/release/manifest-*.json']
+native         windows-x64  : stamped 4, uploaded 5, strays uploaded: []
+native         windows-arm64: stamped 4, uploaded 5, strays uploaded: []
+native         linux-x64  : stamped 5, uploaded 10, strays uploaded: []
+native         linux-arm64: stamped 5, uploaded 8, strays uploaded: []
+legacy-linux   linux-x86  : stamped 5, uploaded 8, strays uploaded: []
+legacy-linux   linux-armv7: stamped 5, uploaded 8, strays uploaded: []
+legacy-windows windows-x86  : stamped 4, uploaded 6, strays uploaded: ['8bitShell-1.0.0-windows-x86-symbols.zip']
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 0 []
+release-manifest assets: 38; install-index rows: 10; files gh would attach: 55
+JUNK gh would attach: ['8bitShell-1.0.0-windows-x86-symbols.zip']  (also in SHA256SUMS: ['8bitShell-1.0.0-windows-x86-symbols.zip'] )

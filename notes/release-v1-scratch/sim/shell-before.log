@@ -1,0 +1,8 @@
+stamp windows-x64: 5 entries; strays in manifest: ['8bitShell-1.0.0-windows-x64.wixpdb']
+stamp windows-arm64: 5 entries; strays in manifest: ['8bitShell-1.0.0-windows-arm64.wixpdb']
+stamp linux-x64: 5 entries; strays in manifest: []
+stamp linux-arm64: 5 entries; strays in manifest: []
+stamp macos-x64: 3 entries; strays in manifest: []
+stamp macos-arm64: 3 entries; strays in manifest: []
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 1 ["FileNotFoundError: [Errno 2] No such file or directory: 'dist/release/8bitShell-1.0.0-windows-arm64.wixpdb'"]

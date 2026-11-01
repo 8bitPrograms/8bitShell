@@ -1,0 +1,12 @@
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -50,6 +50,9 @@
+         run: python scripts/ci/matrix.py
+   native:
+     needs: plan
++    # An empty matrix (e.g. target=macos on a tag with no stable macOS target)
++    # fails strategy evaluation, so skip the job instead.
++    if: fromJSON(needs.plan.outputs.native).include[0] != null
+     name: ${{ matrix.os }} / ${{ matrix.arch }}
+     strategy:
+       fail-fast: false

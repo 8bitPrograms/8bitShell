@@ -1,0 +1,15 @@
+--- /tmp/shell-base (stable targets only)
+stamp windows-x64: 5 entries; strays in manifest: ['8bitShell-1.0.0-windows-x64.wixpdb']
+stamp windows-arm64: 5 entries; strays in manifest: ['8bitShell-1.0.0-windows-arm64.wixpdb']
+stamp linux-x64: 5 entries; strays in manifest: []
+stamp linux-arm64: 5 entries; strays in manifest: []
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 1 ["FileNotFoundError: [Errno 2] No such file or directory: 'dist/release/8bitShell-1.0.0-windows-arm64.wixpdb'"]
+--- work-shell (stable targets only)
+stamp windows-x64: 4 entries; strays in manifest: []
+stamp windows-arm64: 4 entries; strays in manifest: []
+stamp linux-x64: 5 entries; strays in manifest: []
+stamp linux-arm64: 5 entries; strays in manifest: []
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 0 []
+release-manifest assets: 21 install-index rows: 6

@@ -1,0 +1,52 @@
+=== S1. 9f088f3c, clean
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 0 []
+release-manifest assets: 38; install-index rows: 10; files gh would attach: 54
+JUNK gh would attach: []  (also in SHA256SUMS: [] )
+exit=0
+=== S2. 9f088f3c, STRAY_ZIPS=unlisted
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 1 ['ValueError: Not in any package manifest, refusing to publish: 8bitShell-0.9.0-windows-x64.zip, 8bitShell-1.0.0-windows-riscv64.zip, 8bitShell-1.0.0-windows-x64-debug.zip']
+=> gh release create is never reached; nothing published
+exit=2
+=== S3. 9f088f3c, STRAY_ZIPS=manifest
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 0 []
+release-manifest assets: 41; install-index rows: 13; files gh would attach: 58
+JUNK gh would attach: ['8bitShell-0.9.0-windows-x64.zip', '8bitShell-1.0.0-windows-riscv64.zip', '8bitShell-1.0.0-windows-x64-debug.zip', 'manifest-windows-x64-stale.json']  (also in SHA256SUMS: ['8bitShell-0.9.0-windows-x64.zip', '8bitShell-1.0.0-windows-riscv64.zip', '8bitShell-1.0.0-windows-x64-debug.zip', 'manifest-windows-x64-stale.json'] )
+exit=0
+=== S4. shell13c, clean
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 0 []
+release-manifest assets: 38; install-index rows: 10; files gh would attach: 54
+JUNK gh would attach: []  (also in SHA256SUMS: [] )
+exit=0
+=== S5. shell13c, STRAY_ZIPS=unlisted
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 1 ['ValueError: Not in any package manifest, refusing to publish: 8bitShell-0.9.0-windows-x64.zip, 8bitShell-1.0.0-windows-riscv64.zip, 8bitShell-1.0.0-windows-x64-debug.zip']
+=> gh release create is never reached; nothing published
+exit=2
+=== S6. shell13c, STRAY_ZIPS=manifest
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 1 ['ValueError: Not a 1.0.0 release asset, refusing to publish: 8bitShell-0.9.0-windows-x64.zip, 8bitShell-1.0.0-windows-riscv64.zip, 8bitShell-1.0.0-windows-x64-debug.zip']
+=> gh release create is never reached; nothing published
+exit=2
+=== S7. shell13c, GLOB_STRAY=1
+release-check rc= 0 ['Complete target coverage; release policy satisfied']
+finalize rc= 1 ['ValueError: Not in any package manifest, refusing to publish: 8bitShell-1.0.0-windows-x86-symbols.zip']
+=> gh release create is never reached; nothing published
+exit=2
+=== workflow job conditions (9f088f3c = shell13c, build.yml unchanged)
+missing context values evaluate to ''
+| scenario | native | legacy-linux | legacy-windows | draft-release | candidates uploaded |
+|---|---|---|---|---|---|
+| tag push | runs | skipped | skipped | runs | yes |
+| main push | runs | skipped | skipped | skipped | yes |
+| pull request | runs | skipped | skipped | skipped | no |
+| tag dispatch, publish_draft=false (default) | runs | skipped | skipped | runs | yes |
+| branch dispatch, publish_draft | runs | skipped | skipped | runs | yes |
+| tag push | runs | skipped | skipped | runs | yes |
+| main push | runs | skipped | skipped | skipped | yes |
+| pull request | runs | skipped | skipped | skipped | no |
+| tag dispatch, publish_draft=false (default) | runs | skipped | skipped | runs | yes |
+| branch dispatch, publish_draft | runs | skipped | skipped | runs | yes |

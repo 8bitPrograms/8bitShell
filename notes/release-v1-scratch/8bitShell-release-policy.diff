@@ -1,0 +1,12 @@
+--- a/packaging/release-policy.json
++++ b/packaging/release-policy.json
+@@ -1,6 +1,6 @@
+ {
+-  "projectLicenseApproved": false,
++  "projectLicenseApproved": true,
+   "licenseExpression": "GPL-3.0-or-later",
+-  "thirdPartyRedistributionReviewed": false,
+-  "windowsPackagingToolsReviewed": false
++  "thirdPartyRedistributionReviewed": true,
++  "windowsPackagingToolsReviewed": true
+ }
