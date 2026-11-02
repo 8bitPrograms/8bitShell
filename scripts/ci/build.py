@@ -156,7 +156,12 @@ def smoke(stage,system):
     env.update(QT_QPA_PLATFORM="offscreen",QT_QUICK_BACKEND="software")
     env[c["environment"]+"_PROFILE"]=str(runtime/"profile")
     if system=="windows":
-        exe=stage/"bin"/(app+".exe");env["PATH"]=str(Path(os.environ["SystemRoot"])/"System32");env.pop("PSModulePath",None)
+        exe=stage/"bin"/(app+".exe");env["PATH"]=str(Path(os.environ["SystemRoot"])/"System32")
+        # Test the installed Windows shell modules. Merely dropping the variable
+        # can let PowerShell reconstruct an SDK/runtime path from its parent.
+        env["PSModulePath"]=os.pathsep.join((
+            str(Path(os.environ["SystemRoot"])/"System32/WindowsPowerShell/v1.0/Modules"),
+            str(Path(os.environ["ProgramFiles"])/"WindowsPowerShell/Modules")))
         env["QT_QPA_FONTDIR"]=str(Path(os.environ["SystemRoot"])/"Fonts")
     elif system=="macos":exe=stage/(app+".app")/"Contents/MacOS"/app
     else:exe=stage/app;env["PATH"]="/usr/bin:/bin"
