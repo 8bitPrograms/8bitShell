@@ -76,6 +76,7 @@ QtObject {
         }
 
         const commands = [
+            command("window:new", "New window", "Ctrl+Shift+N", "new window instance separate process"),
             command("ssh:new", "New SSH connection…", "Enter a host or IP address", "connect remote ssh host ip", "query", "ssh "),
             command("session:new", "Create a saved SSH connection…", "Open the connection editor", "save profile ssh host", "save"),
             command("local:default", "Open default local terminal", LocalProfileStore.defaultProfile.name || "Local shell", "shell terminal new", "local", LocalProfileStore.defaultProfileId),

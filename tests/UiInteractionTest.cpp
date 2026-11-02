@@ -59,6 +59,7 @@ private slots:
     void linksUiAndTerminalThemesUnlessSeparated();
     void scrollbackPaddingUsesRealBlankCells();
     void panelControlsStayReachable();
+    void windowControlsStayReachableWhenSnapped();
     void panelsRetractUpwardsWithoutResizingTheirContents();
     void fileBrowserStateFollowsTabsAndVisibilityPersists();
     void threeDotMenusOpenAndEditActionWorks();
@@ -545,6 +546,24 @@ void UiInteractionTest::scrollbackPaddingUsesRealBlankCells() {
     // Wider columns, then additional rows, restore old narrow history lines.
     terminal.setWidth(900);
     terminal.setHeight(600);
+}
+
+void UiInteractionTest::windowControlsStayReachableWhenSnapped() {
+    const auto original = m_window->size();
+    const auto restore = qScopeGuard([&] { m_window->resize(original); });
+    for (const int width : {480,640,900,1080}) {
+        m_window->resize(width,500);
+        QTest::qWait(100);
+        QCOMPARE(m_window->width(),width);
+        for (const auto& name : {QStringLiteral("windowMinimizeButton"), QStringLiteral("windowMaximizeButton"),
+                QStringLiteral("windowCloseButton"), QStringLiteral("commandPaletteButton")}) {
+            auto* item = visualItem(name);
+            QVERIFY(item && item->isVisible());
+            const auto bounds = item->mapRectToScene(item->boundingRect());
+            QVERIFY2(bounds.left() >= 0 && bounds.right() <= width + 1, qPrintable(name));
+            QVERIFY(bounds.top() >= 0 && bounds.bottom() <= m_window->height());
+        }
+    }
 }
 
 void UiInteractionTest::panelControlsStayReachable() {

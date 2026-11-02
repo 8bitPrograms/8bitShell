@@ -17,6 +17,7 @@ Rectangle {
     property bool filesVisible: false
     property int splitCount: 1
     property real navigationWidth: 300
+    readonly property bool compactWindow: width < 900
     property var searchData: ({results: [], total: 0})
     property string resultQuery: ""
     function refreshSearch() {
@@ -97,7 +98,7 @@ Rectangle {
         spacing: 0
 
         Item {
-            Layout.preferredWidth: root.navigationWidth
+            Layout.preferredWidth: root.compactWindow ? 110 : root.navigationWidth
             Layout.fillHeight: true
 
             RowLayout {
@@ -194,6 +195,7 @@ Rectangle {
 
                 Rectangle {
                     id: searchBox
+                    visible: !root.compactWindow
                     objectName: "quickConnectSurface"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 140
@@ -338,6 +340,7 @@ Rectangle {
 
                 AppComboBox {
                     id: splitSelector
+                    visible: !root.compactWindow
                     objectName: "splitLayoutSelector"
                     Layout.preferredWidth: 92
                     implicitHeight: 24
@@ -387,6 +390,7 @@ Rectangle {
 
                 AppButton {
                     id: appearanceButton
+                    visible: !root.compactWindow
                     objectName: "appearanceToggle"
                     text: ""
                     iconText: ""
@@ -488,6 +492,7 @@ Rectangle {
                 }
                 AbstractButton {
                     id: profileButton
+                    visible: !root.compactWindow
                     objectName: "profileSettingsButton"
                     implicitHeight: 24
                     implicitWidth: Math.max(64, profileRow.implicitWidth + leftPadding + rightPadding)
@@ -537,13 +542,14 @@ Rectangle {
                     component CaptionButton: AbstractButton {
                         property string glyph: ""
                         property bool danger: false
+                        property bool nativeHovered: false
                         implicitWidth: 40
                         hoverEnabled: true
                         readonly property color dangerSurface: Theme.cyberpunkChrome ? "#b42339" : Theme.red
                         background: Rectangle {
                             color: parent.down
                                    ? (parent.danger ? Qt.darker(parent.dangerSurface, 1.2) : Theme.headerPressed)
-                                   : parent.hovered
+                                   : parent.hovered || parent.nativeHovered
                                      ? (parent.danger ? parent.dangerSurface : Theme.headerHover)
                                      : "transparent"
                             border.color: Theme.headerText

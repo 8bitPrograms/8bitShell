@@ -2,6 +2,9 @@
 
 ## Start a terminal
 
+- Press `Ctrl+Shift+N` (or choose **New window** in the command palette) for
+  another independent application window. Windows supports native edge snapping
+  and the maximize-button Snap layout menu.
 - Click the **+** beside the terminal tabs, or press `Ctrl+Shift+T`, for a local terminal.
 - **New session** in the top-right opens the saved SSH session editor.
 - Enter `host`, `user@host`, or `ssh` with the supported `-p`, `-l`, `-i`, `-J`, `-X`, `-C`
@@ -21,6 +24,11 @@ other tabs. Bulk close actions leave pinned tabs open. When the tab strip is ful
 left/right buttons, a horizontal trackpad gesture, or the mouse wheel over the strip to reach
 the rest. Selecting a tab always scrolls it back into view. Use `Ctrl+Tab` to switch and
 `Ctrl+Shift+W` to close the active tab. `Ctrl++` and `Ctrl+-` change only that tab's terminal size.
+
+Hold **Ctrl** and click an HTTP/HTTPS or `www.` link in terminal output to open
+it in your default browser. Dragging cancels the link click. Terminal images
+and Codex CLI pets are supported through the bounded inline Kitty graphics
+backend; restart the local terminal and Codex after updating, then use `/pets`.
 
 The compact layout selector in the upper tab strip switches between **Tabs**, **2 panes**,
 **4 panes** and **6 panes** without reconnecting sessions. The remaining width belongs to

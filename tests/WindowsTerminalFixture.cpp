@@ -21,7 +21,17 @@ static bool inheritedHandle(HANDLE handle) {
 int wmain(int argc, wchar_t** argv) {
     SetConsoleCP(CP_UTF8); SetConsoleOutputCP(CP_UTF8);
     const std::wstring mode = argc > 1 ? argv[1] : L"args";
-    if (mode == L"args") {
+    if (mode == L"graphics-probe") {
+        SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), ENABLE_VIRTUAL_TERMINAL_INPUT);
+        const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+        DWORD flags = 0;
+        GetConsoleMode(output, &flags);
+        SetConsoleMode(output, flags | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        std::printf("BEFORE\x1bP9;1;0q\"1;1;1;1#0;2;100;0;0#0@\x1b\\");
+        std::printf("\x1b_Ga=T,i=7,s=1,v=1,f=24,q=2,C=1;/wAA\x1b\\AFTER\n");
+        std::fflush(stdout);
+        Sleep(1000);
+    } else if (mode == L"args") {
         for (int n = 2; n < argc; ++n) {
             std::printf("ARG%d=", n - 2);
             for (const wchar_t* p = argv[n]; *p; ++p) std::printf("%04x", unsigned(*p));

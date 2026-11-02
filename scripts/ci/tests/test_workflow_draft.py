@@ -1,7 +1,7 @@
 """Evaluates the draft-release job condition of build.yml for each trigger.
 
-A tag push drafts. A workflow_dispatch drafts only with publish_draft, even on a
-tag ref. Uses only the standard library, so it runs in the plan job."""
+Automatic triggers are parked. A workflow_dispatch drafts only with
+publish_draft. Uses only the standard library, so it runs in the plan job."""
 import re,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
@@ -29,8 +29,10 @@ class DraftReleaseConditionTests(unittest.TestCase):
  def test_inputs_parsed(self):
   self.assertIn("publish_draft",DEFAULTS)
   self.assertFalse(DEFAULTS["publish_draft"])
- def test_tag_push_drafts(self):
-  self.assertTrue(drafts("push",TAG))
+ def test_automatic_triggers_are_parked(self):
+  triggers=WORKFLOW.split("\nenv:",1)[0]
+  self.assertIsNone(re.search(r"^  (?:push|pull_request|schedule):",triggers,re.M))
+  self.assertFalse(drafts("push",TAG))
  def test_dispatch_on_tag_needs_publish_draft(self):
   self.assertFalse(drafts("workflow_dispatch",TAG))
   self.assertFalse(drafts("workflow_dispatch",TAG,publish_draft=False))

@@ -4,6 +4,7 @@
 #include <QKeyEvent>
 #include <QJsonDocument>
 #include <QSignalSpy>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <algorithm>
 #include <bitshell/core/Platform.h>
@@ -254,6 +255,17 @@ private slots:
     }
 #ifdef Q_OS_WIN
     void nativePowerShellExecutesInTheExistingProcess() {
+        // Isolate system PowerShell from SDK module paths that can open an
+        // unrelated untrusted-publisher prompt before the first input.
+        const bool hadModules = qEnvironmentVariableIsSet("PSModulePath");
+        const auto previousModules = qgetenv("PSModulePath");
+        const auto restoreModules = qScopeGuard([&] {
+            if (hadModules) qputenv("PSModulePath", previousModules);
+            else qunsetenv("PSModulePath");
+        });
+        qputenv("PSModulePath", (bitshell::core::Platform::windowsSystemDirectory()
+            + QStringLiteral("/WindowsPowerShell/v1.0/Modules;")
+            + qEnvironmentVariable("ProgramFiles") + QStringLiteral("/WindowsPowerShell/Modules")).toUtf8());
         QTemporaryDir isolated;
         QVERIFY(isolated.isValid());
         QVERIFY(QFile::copy(QCoreApplication::applicationDirPath() + QStringLiteral("/local_ssh_fixture.exe"), isolated.filePath(QStringLiteral("ssh.exe"))));

@@ -1,16 +1,14 @@
 name: Build, test and prepare release
 on:
-  push:
-    branches: [main, master]
-    tags: ['v*']
-  pull_request:
+  # Automatic builds are parked; releases are built locally on Windows.
+  # Retain the existing manual recipe for when hosted builds resume.
   workflow_dispatch:
     inputs:
       target:
         description: Build target
         type: choice
         options: [all, windows, linux, macos]
-        default: all
+        default: windows
       packages:
         description: Build downloadable packages
         type: boolean
@@ -279,9 +277,8 @@ jobs:
           if-no-files-found: error
   draft-release:
     needs: [plan, native, legacy-linux, legacy-windows]
-    # A version tag push drafts. A manual dispatch drafts only with publish_draft,
-    # even on a tag ref.
-    if: always() && needs.native.result == 'success' && (needs.legacy-linux.result == 'success' || needs.legacy-linux.result == 'skipped') && (needs.legacy-windows.result == 'success' || needs.legacy-windows.result == 'skipped') && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_draft))
+    # Only an explicitly requested manual run can prepare a draft.
+    if: always() && needs.native.result == 'success' && (needs.legacy-linux.result == 'success' || needs.legacy-linux.result == 'skipped') && (needs.legacy-windows.result == 'success' || needs.legacy-windows.result == 'skipped') && (github.event_name == 'workflow_dispatch' && inputs.publish_draft)
     runs-on: ubuntu-22.04
     permissions: { contents: write }
     steps:

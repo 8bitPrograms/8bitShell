@@ -31,6 +31,7 @@ target_sources(bitshell_core
         FILE_SET HEADERS
         BASE_DIRS include
         FILES
+            include/bitshell/core/WindowLauncher.h
             include/bitshell/core/ConnectionResolver.h
             include/bitshell/core/ConnectionRouting.h
             include/bitshell/core/PersonalProfile.h

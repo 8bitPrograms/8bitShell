@@ -3,6 +3,8 @@ qt_add_library(bitshell_terminal STATIC)
 target_sources(bitshell_terminal
     PRIVATE
         src/TerminalView.cpp
+        src/TerminalViewLinks.cpp
+        src/TerminalGraphics.cpp
         src/TerminalViewCredentials.cpp
         src/TerminalViewCredentials.h
         src/BroadcastController.cpp
@@ -10,6 +12,8 @@ target_sources(bitshell_terminal
         FILE_SET HEADERS
         BASE_DIRS include
         FILES
+            include/bitshell/terminal/TerminalGraphics.h
+            include/bitshell/terminal/TerminalUrl.h
             include/bitshell/terminal/PtyProcess.h
             include/bitshell/terminal/TerminalView.h
             include/bitshell/terminal/Win32Input.h

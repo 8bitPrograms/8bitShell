@@ -32,6 +32,7 @@ actual deployed component set, retain the matching Qt source/configuration and
 all required third-party notices, and complete the project's licensing/release
 gates. This notice alone is not a completed redistribution-compliance assessment.
 
-Windows OpenSSH is an operating-system prerequisite, not redistributed here.
-The Microsoft C++ runtime must be installed from the official signed Microsoft
-redistributable; compiler-directory runtime DLLs are not bundled.
+Windows packages bundle the hash-pinned OpenSSH client tools and the app-local
+Microsoft C++ redistributable DLLs. The x64 package also includes the pinned
+private ConPTY/OpenConsole runtime and its MIT notice under `bin/conpty`.
+They do not install a server or replace the system console.

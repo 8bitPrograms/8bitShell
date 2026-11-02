@@ -4,6 +4,7 @@
 #include <utility>
 #include <bitshell/core/SshSecurity.h>
 #include <QDir>
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QScopeGuard>
@@ -20,6 +21,29 @@ namespace {
 constexpr qsizetype inputQueueLimit = 1024 * 1024;
 constexpr qsizetype outputQueueLimit = 256 * 1024;
 constexpr qsizetype outputBatchSize = 64 * 1024;
+struct ConptyApi {
+    decltype(&CreatePseudoConsole) create = &CreatePseudoConsole;
+    decltype(&ResizePseudoConsole) resize = &ResizePseudoConsole;
+    decltype(&ClosePseudoConsole) close = &ClosePseudoConsole;
+    bool modern = false;
+    ConptyApi() {
+        // Never search PATH, the current directory or another application's
+        // installation. The package builder verifies this private runtime.
+        const auto path = QDir::toNativeSeparators(QCoreApplication::applicationDirPath()
+            + QStringLiteral("/conpty/conpty.dll")).toStdWString();
+        const auto module = LoadLibraryExW(path.c_str(), nullptr,
+            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+        if (!module) return;
+        const auto c = reinterpret_cast<decltype(create)>(GetProcAddress(module, "ConptyCreatePseudoConsole"));
+        const auto r = reinterpret_cast<decltype(resize)>(GetProcAddress(module, "ConptyResizePseudoConsole"));
+        const auto d = reinterpret_cast<decltype(close)>(GetProcAddress(module, "ConptyClosePseudoConsole"));
+        if (!c || !r || !d) { FreeLibrary(module); return; }
+        create = c; resize = r; close = d; modern = true;
+        // Retain the DLL until process exit: detached PTY teardown workers can
+        // outlive the last view and still call its close function.
+    }
+};
+const ConptyApi& conpty() { static const ConptyApi api; return api; }
 QString windowsError(const char* operation) {
     return QStringLiteral("%1 failed (Windows error %2).").arg(QString::fromLatin1(operation)).arg(GetLastError());
 }
@@ -39,7 +63,7 @@ struct PtyProcess::WindowsState {
     int exitCode = -1;
     PtyProcess* owner = nullptr; // Only read/write while holding mutex.
     ~WindowsState() {
-        if (pseudo) ClosePseudoConsole(pseudo);
+        if (pseudo) conpty().close(pseudo);
         for (HANDLE handle : {input, output, process, job}) if (handle) CloseHandle(handle);
     }
     // Caller holds mutex. stop() clears owner under the same lock before the
@@ -54,6 +78,7 @@ struct PtyProcess::WindowsState {
 
 PtyProcess::PtyProcess(QObject* parent) : QObject(parent) {}
 PtyProcess::~PtyProcess() { stop(); }
+bool PtyProcess::graphicsAvailable() { return conpty().modern; }
 
 bool PtyProcess::start(const QString& program, const QStringList& arguments, int columns, int rows, QString* errorMessage,
                        const QString& workingDirectory, const QProcessEnvironment& environmentOverrides) {
@@ -80,7 +105,7 @@ bool PtyProcess::start(const QString& program, const QStringList& arguments, int
         return false;
     }
     const COORD size{SHORT(std::clamp(columns, 2, 1000)), SHORT(std::clamp(rows, 2, 1000))};
-    const HRESULT created = CreatePseudoConsole(size, childInput, childOutput, 0, &state->pseudo);
+    const HRESULT created = conpty().create(size, childInput, childOutput, 0, &state->pseudo);
     CloseHandle(childInput); CloseHandle(childOutput);
     if (FAILED(created)) {
         setError(errorMessage, QStringLiteral("CreatePseudoConsole failed (0x%1).").arg(quint32(created), 8, 16, QLatin1Char('0'))); return false;
@@ -103,7 +128,8 @@ bool PtyProcess::start(const QString& program, const QStringList& arguments, int
     environment.insert(environmentOverrides);
     environment.insert(QStringLiteral("TERM"), QStringLiteral("xterm-256color"));
     environment.insert(QStringLiteral("COLORTERM"), QStringLiteral("truecolor"));
-    environment.insert(QStringLiteral("TERM_PROGRAM"), QStringLiteral("bitshell"));
+    environment.insert(QStringLiteral("TERM_PROGRAM"), graphicsAvailable()
+        ? QStringLiteral("bitshell-kitty") : QStringLiteral("bitshell"));
     auto entries = environment.toStringList();
     std::sort(entries.begin(), entries.end(), [](const QString& a, const QString& b) { return a.compare(b, Qt::CaseInsensitive) < 0; });
     std::wstring environmentBlock;
@@ -206,7 +232,7 @@ bool PtyProcess::start(const QString& program, const QStringList& arguments, int
         TerminateJobObject(state->job, code);
         {
             std::lock_guard apiLock(state->apiMutex);
-            ClosePseudoConsole(state->pseudo); state->pseudo = nullptr;
+            conpty().close(state->pseudo); state->pseudo = nullptr;
         }
         {
             std::lock_guard lock(state->mutex);
@@ -246,7 +272,7 @@ void PtyProcess::resize(int columns, int rows) {
     if (!state) return;
     std::unique_lock apiLock(state->apiMutex, std::try_to_lock);
     if (!apiLock.owns_lock() || !state->pseudo) return;
-    const HRESULT result = ResizePseudoConsole(state->pseudo, {SHORT(std::clamp(columns, 2, 1000)), SHORT(std::clamp(rows, 2, 1000))});
+    const HRESULT result = conpty().resize(state->pseudo, {SHORT(std::clamp(columns, 2, 1000)), SHORT(std::clamp(rows, 2, 1000))});
     if (FAILED(result)) emit errorOccurred(QStringLiteral("Cannot resize the Windows pseudoconsole."));
 }
 void PtyProcess::write(QByteArray data) {

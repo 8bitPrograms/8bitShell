@@ -61,6 +61,70 @@ depends on the SDK environment and is not the normal launch path.
 
 The local `-Portable` flow needs no WiX/NSIS and does not install the app.
 Native MSI/EXE and CI ZIP/tar.gz production use [RELEASING.md](RELEASING.md).
+
+### Terminal links
+
+Hold **Ctrl** and click an HTTP/HTTPS or `www.` address in terminal output to
+open it in the default browser. Ctrl-hover shows a hand cursor. Normal clicks
+and text selection retain their existing behavior; dragging cancels a pending
+link click. ANSI colors and wide characters do not change the destination.
+Live-screen soft wraps are joined up to eight rows / 8192 characters. Scrollback
+supports addresses contained on a single physical row; wrapped history links
+are not reconstructed. Other URI schemes are not launched.
+
+### Private Windows console runtime
+
+Windows x64 builds prepare Microsoft ConPTY 1.25.260303002-preview in
+`tooling/conpty-x64`, using the per-file SHA256 lock in
+`packaging/conpty.lock.json`. The helper downloads the official NuGet package
+on the first build. For an offline build, supply an existing copy of the exact
+locked runtime (the hashes must match):
+
+```powershell
+python scripts/ci/prepare-conpty.py --source 'C:/path/to/conpty'
+```
+
+Both `conpty.dll` and `OpenConsole.exe` are required. CMake verifies them again
+and deploys them under `bin/conpty` with the MIT notice. No service, driver or
+system console replacement is installed. The application loads only this
+private directory; it never searches other applications for a runtime.
+Without it, a manual source build still runs using the system console but
+does not advertise graphics support. The private runtime is currently locked
+for x64; other Windows architectures retain the system console.
+
+### Terminal images, windows and snapping
+
+The terminal supports the inline PNG and RGB/RGBA subset of Kitty graphics,
+including chunked transfers, queries, placements, image replacement and
+deletion. This is the protocol used by Codex CLI pets. Start a fresh local tab
+and restart Codex after updating, then use `/pets`. Local terminals retain
+`TERM=xterm-256color`; `TERM_PROGRAM=bitshell-kitty` identifies 8bitShell's
+graphics backend without changing the terminfo or claiming Kitty's keyboard
+extensions. Windows advertises this backend only with the private runtime.
+Codex's own tmux/Zellij restriction still applies. A remote SSH program also
+needs its own protocol detection/configuration; SSH does not forward
+`TERM_PROGRAM` automatically.
+
+Image decoding uses only inline bytes, not local file paths or shared memory.
+Each tab has an 8 MiB encoded transfer limit, 2048 x 2048 maximum image size,
+a 16 MiB decoded image budget, 64 stored images and 128 placements. Ordinary
+text tabs allocate no image buffers. Images are scoped to their terminal;
+placements expire on resize and when scrolled offscreen, and image storage
+is released on reset, alternate-screen transitions and session exit. Full
+Kitty animation, Unicode placeholders, compressed transfers, negative layers
+and Sixel are not implemented. Clients should use cursor-preserving placement
+(`C=1`), as Codex does.
+
+`Ctrl+Shift+N` or **Search > New window** opens another independent process
+using the same profile. Existing write locks and conflict checks protect shared
+configuration; terminal state belongs to each process. Starting the executable
+again also opens a separate instance.
+
+Windows keeps its native resizable frame beneath the custom caption. Drag the
+title bar to an edge/corner, use Win+Arrow, or hover the maximize button for
+Snap Layouts. The minimum window size is 480 x 320 logical pixels; narrow
+windows retain their caption controls and command palette. Windows' own
+Snap settings determine which layouts are available.
 The older `-Package` switch invokes the separate CPack installer path.
 
 ## Linux: native development build

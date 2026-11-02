@@ -12,6 +12,7 @@
 
 #include <QClipboard>
 #include <QDir>
+#include <QDesktopServices>
 #include <QFileInfo>
 #include <QFocusEvent>
 #include <QFontDatabase>
@@ -27,6 +28,7 @@
 #include <QQuickWindow>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QStyleHints>
 #include <QTimer>
 #include <QUuid>
 #include <QWheelEvent>
@@ -1448,6 +1450,29 @@ void TerminalView::paintContent(QPainter* painter, const QBitArray* dirtyRows) {
 
 }
 
+int TerminalView::apcFallbackCallback(VTermStringFragment fragment, void* user) {
+    auto* terminal = static_cast<TerminalView*>(user);
+    if (fragment.initial) {
+        terminal->m_graphicsFragment.clear();
+        terminal->m_graphicsOverflow = false;
+    }
+    if (fragment.len > size_t(TerminalGraphics::PayloadLimit - terminal->m_graphicsFragment.size()))
+        terminal->m_graphicsOverflow = true;
+    if (terminal->m_graphicsOverflow) terminal->m_graphicsFragment.clear();
+    else terminal->m_graphicsFragment.append(fragment.str, qsizetype(fragment.len));
+    if (fragment.final && !terminal->m_graphicsOverflow) {
+        vterm_screen_flush_damage(terminal->m_screen);
+        VTermPos cursor{};
+        vterm_state_get_cursorpos(vterm_obtain_state(terminal->m_terminal), &cursor);
+        const auto reply = terminal->m_graphics.command(terminal->m_graphicsFragment,
+            {cursor.col, cursor.row}, {qRound(terminal->m_cellWidth), qRound(terminal->m_cellHeight)});
+        if (!reply.isEmpty()) terminal->m_process.write(reply);
+        terminal->m_graphicsDirty |= terminal->m_graphics.takeChanged();
+        terminal->m_graphicsFragment.clear();
+    }
+    return 1;
+}
+
 void TerminalView::paint(QPainter* painter) {
     QMutexLocker locker(&m_terminalMutex);
     // A scene-graph update queued before hiding can still call paint once.
@@ -1493,6 +1518,11 @@ void TerminalView::paint(QPainter* painter) {
         m_contentCache = QImage();
         paintContent(painter);
     }
+    painter->save();
+    painter->setClipRect(QRectF(m_horizontalPadding, m_verticalPadding,
+        m_columns * m_cellWidth, m_rows * m_cellHeight));
+    m_graphics.paint(painter, {m_horizontalPadding, m_verticalPadding}, {m_cellWidth, m_cellHeight}, m_scrollOffset);
+    painter->restore();
 }
 
 void TerminalView::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) {
@@ -1709,6 +1739,17 @@ void TerminalView::focusOutEvent(QFocusEvent* event) {
 
 void TerminalView::mousePressEvent(QMouseEvent* event) {
     forceActiveFocus();
+    m_pressedUrl = {};
+    m_urlDragging = false;
+    if (event->button() == Qt::LeftButton && event->modifiers().testFlag(Qt::ControlModifier)) {
+        QMutexLocker locker(&m_terminalMutex);
+        m_pressedUrl = urlAtLocked(event->position());
+        if (!m_pressedUrl.isEmpty()) {
+            m_urlPressPosition = event->position();
+            event->accept();
+            return;
+        }
+    }
     if (event->button() == Qt::RightButton
         && (m_mouseMode == VTERM_PROP_MOUSE_NONE || event->modifiers().testFlag(Qt::ShiftModifier))) {
         emit contextMenuRequested(event->position());
@@ -1740,6 +1781,12 @@ void TerminalView::mousePressEvent(QMouseEvent* event) {
 }
 
 void TerminalView::mouseMoveEvent(QMouseEvent* event) {
+    if (!m_pressedUrl.isEmpty()) {
+        m_urlDragging |= (event->position() - m_urlPressPosition).manhattanLength()
+            > QGuiApplication::styleHints()->startDragDistance();
+        event->accept();
+        return;
+    }
     QMutexLocker locker(&m_terminalMutex);
     if (m_terminalMousePressed && m_mouseMode >= VTERM_PROP_MOUSE_DRAG) {
         sendMousePosition(event->position(), event->modifiers());
@@ -1754,6 +1801,20 @@ void TerminalView::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void TerminalView::mouseReleaseEvent(QMouseEvent* event) {
+    if (!m_pressedUrl.isEmpty()) {
+        const auto target = std::exchange(m_pressedUrl, {});
+        bool open = event->button() == Qt::LeftButton
+            && event->modifiers().testFlag(Qt::ControlModifier) && !m_urlDragging
+            && (event->position() - m_urlPressPosition).manhattanLength()
+                <= QGuiApplication::styleHints()->startDragDistance();
+        {
+            QMutexLocker locker(&m_terminalMutex);
+            open = open && urlAtLocked(event->position()) == target;
+        }
+        if (open && !QDesktopServices::openUrl(target)) setStatusText(QStringLiteral("Could not open the link in your browser."));
+        event->accept();
+        return;
+    }
     QMutexLocker locker(&m_terminalMutex);
     if (m_terminalMousePressed) {
         sendMousePosition(event->position(), event->modifiers());
@@ -1831,6 +1892,7 @@ void TerminalView::initializeTerminal() {
     m_screenCallbacks.sb_clear = &TerminalView::scrollbackClearCallback;
     vterm_screen_set_callbacks(m_screen, &m_screenCallbacks, this);
     m_stateFallbacks.osc = &TerminalView::oscFallbackCallback;
+    m_stateFallbacks.apc = &TerminalView::apcFallbackCallback;
     vterm_screen_set_unrecognised_fallbacks(m_screen, &m_stateFallbacks, this);
     vterm_screen_enable_altscreen(m_screen, 1);
     vterm_screen_enable_reflow(m_screen, true);
@@ -1854,6 +1916,11 @@ void TerminalView::resetTerminal() {
     stopPasswordBroker();
     setCurrentSshConnection({});
     QMutexLocker locker(&m_terminalMutex);
+    m_graphics.clear();
+    m_graphicsFragment.clear();
+    m_graphicsOverflow = false;
+    m_pressedUrl = {};
+    m_urlDragging = false;
     cancelPendingLocalSsh();
     clearLocalSshQuery();
     m_localPromptActive = false;
@@ -2005,11 +2072,16 @@ void TerminalView::handleProcessData(const QByteArray& data) {
     }
     if (m_credential) [[unlikely]] answerCredentialPrompt(data);
     // The cursor is an overlay. Upload the terminal texture only when cells changed.
+    if (m_graphicsDirty || m_graphics.takeChanged()) {
+        m_graphicsDirty = false;
+        requestSceneUpdate();
+    }
     if (searchWasActive || oldScrollOffset != m_scrollOffset) update();
     else if (m_contentDirty || m_dirtyRows.count(true) > 0) requestSceneUpdate();
 }
 
 void TerminalView::handleProcessFinished(int exitCode) {
+    { QMutexLocker locker(&m_terminalMutex); m_graphics.clear(); }
     stopPasswordBroker();
     releaseCredential();
     setCurrentSshConnection({});
@@ -2450,6 +2522,10 @@ int TerminalView::damageCallback(VTermRect rect, void* user) {
 
 int TerminalView::moveRectCallback(VTermRect destination, VTermRect source, void* user) {
     auto* terminal = static_cast<TerminalView*>(user);
+    if (destination.start_col == 0 && source.start_col == 0
+        && destination.end_col == terminal->m_columns && source.end_col == terminal->m_columns)
+        terminal->m_graphics.scroll(std::min(destination.start_row, source.start_row),
+            std::max(destination.end_row, source.end_row), destination.start_row - source.start_row);
     terminal->damageRows(std::min(destination.start_row, source.start_row), std::max(destination.end_row, source.end_row));
     return 1;
 }
@@ -2466,6 +2542,7 @@ int TerminalView::setTermPropertyCallback(VTermProp property, VTermValue* value,
     auto* terminal = static_cast<TerminalView*>(user);
     switch (property) {
     case VTERM_PROP_ALTSCREEN:
+        terminal->m_graphics.clear();
         terminal->m_alternateScreen = value->boolean != 0;
         terminal->m_localPromptActive = false;
         break;
@@ -2509,7 +2586,9 @@ int TerminalView::bellCallback(void* user) {
 }
 
 int TerminalView::resizeCallback(int, int, void* user) {
-    static_cast<TerminalView*>(user)->update();
+    auto* terminal = static_cast<TerminalView*>(user);
+    terminal->m_graphics.clearPlacements();
+    terminal->update();
     return 1;
 }
 

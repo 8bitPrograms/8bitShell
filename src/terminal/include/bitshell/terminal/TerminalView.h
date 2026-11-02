@@ -10,6 +10,7 @@
 #include <QPoint>
 #include <QQuickPaintedItem>
 #include <QString>
+#include <QUrl>
 #include <QSet>
 #include <QVariantList>
 #include <QVariantMap>
@@ -18,6 +19,7 @@
 #include <bitshell/core/HighlightEngine.h>
 #include <bitshell/terminal/PtyProcess.h>
 #include <bitshell/terminal/ScrollbackLine.h>
+#include <bitshell/terminal/TerminalGraphics.h>
 
 #include <deque>
 #include <functional>
@@ -28,6 +30,7 @@
 #include <vterm.h>
 
 class QFocusEvent;
+class QHoverEvent;
 class QKeyEvent;
 class QMouseEvent;
 class QPainter;
@@ -272,6 +275,8 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void hoverMoveEvent(QHoverEvent* event) override;
+    void hoverLeaveEvent(QHoverEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
 
 private:
@@ -302,6 +307,8 @@ private:
     QFont terminalFont(bool bold = false, bool italic = false) const;
     void recalculateGrid();
     void handleProcessData(const QByteArray& data);
+    QUrl urlAtLocked(const QPointF& position) const;
+    void updateLinkCursor(const QPointF& position, Qt::KeyboardModifiers modifiers);
     void refreshLocalSshQuery();
     void clearLocalSshQuery();
     QString localInputTextLocked() const;
@@ -373,6 +380,7 @@ private:
 
     static void outputCallback(const char* bytes, size_t length, void* user);
     static int oscFallbackCallback(int command, VTermStringFragment fragment, void* user);
+    static int apcFallbackCallback(VTermStringFragment fragment, void* user);
     static int damageCallback(VTermRect rect, void* user);
     static int moveRectCallback(VTermRect destination, VTermRect source, void* user);
     static int moveCursorCallback(VTermPos position,
@@ -420,6 +428,13 @@ private:
     VTermScreen* m_screen = nullptr;
     VTermScreenCallbacks m_screenCallbacks{};
     VTermStateFallbacks m_stateFallbacks{};
+    TerminalGraphics m_graphics;
+    QByteArray m_graphicsFragment;
+    bool m_graphicsOverflow = false;
+    bool m_graphicsDirty = false;
+    QUrl m_pressedUrl;
+    QPointF m_urlPressPosition;
+    bool m_urlDragging = false;
 
     std::deque<ScrollbackLine> m_scrollback;
     std::size_t m_scrollbackBytes = 0;

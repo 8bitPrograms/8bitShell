@@ -35,6 +35,7 @@
 #include <unistd.h>
 
 namespace bitshell::terminal {
+bool PtyProcess::graphicsAvailable() { return true; }
 
 namespace {
 
@@ -110,7 +111,7 @@ bool PtyProcess::start(const QString& program,
     }
     environment.insert(QStringLiteral("TERM"), QStringLiteral("xterm-256color"));
     environment.insert(QStringLiteral("COLORTERM"), QStringLiteral("truecolor"));
-    environment.insert(QStringLiteral("TERM_PROGRAM"), QStringLiteral("bitshell"));
+    environment.insert(QStringLiteral("TERM_PROGRAM"), QStringLiteral("bitshell-kitty"));
     std::vector<QByteArray> environmentStorage;
     for (const auto& entry : environment.toStringList()) environmentStorage.push_back(entry.toLocal8Bit());
     std::vector<char*> envp;

@@ -77,6 +77,18 @@ public:
     }
     static void stopFixture(TerminalView& terminal) { terminal.m_process.stop(); }
     static void feed(TerminalView& terminal, const QByteArray& bytes) { terminal.handleProcessData(bytes); }
+    static QPointF cellCenter(const TerminalView& terminal, int row, int column) {
+        return {terminal.m_horizontalPadding + (column + 0.5) * terminal.m_cellWidth,
+            terminal.m_verticalPadding + (row + 0.5) * terminal.m_cellHeight};
+    }
+    static QUrl urlAt(const TerminalView& terminal, const QPointF& point) { return terminal.urlAtLocked(point); }
+    static void scrollHistory(TerminalView& terminal, int offset) { terminal.setScrollOffset(offset); }
+    static int graphicsCount(const TerminalView& terminal) { return terminal.m_graphics.placementCount(); }
+    static qsizetype graphicsBytes(const TerminalView& terminal) { return terminal.m_graphics.imageBytes(); }
+    static void paintGraphics(const TerminalView& terminal, QPainter* painter) {
+        terminal.m_graphics.paint(painter, {terminal.m_horizontalPadding, terminal.m_verticalPadding},
+            {terminal.m_cellWidth, terminal.m_cellHeight}, terminal.m_scrollOffset);
+    }
     static std::vector<VTermScreenCell> popScrollbackRow(TerminalView& terminal, int columns) {
         std::vector<VTermScreenCell> cells(static_cast<size_t>(columns));
         if (!TerminalView::scrollbackPopCallback(columns, cells.data(), &terminal)) return {};

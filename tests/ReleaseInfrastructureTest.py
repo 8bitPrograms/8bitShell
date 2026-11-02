@@ -136,7 +136,7 @@ class ReleaseInfrastructureTest(unittest.TestCase):
     def test_manual_ci_covers_native_targets_and_keeps_publication_separate(self):
         workflow = (ROOT / ".github/workflows/build.yml").read_text()
         self.assertIn("description: Build target", workflow)
-        self.assertIn("default: all", workflow)
+        self.assertIn("default: windows", workflow)
         self.assertIn("description: Build downloadable packages", workflow)
         self.assertIn("default: true", workflow)
         self.assertIn("description: Prepare a draft for a matching version tag", workflow)

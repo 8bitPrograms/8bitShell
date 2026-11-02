@@ -1,6 +1,83 @@
 # 8bitShell 1.0 release preparation
 
-The application starts at **1.0.0**. The source is now in the new 8bitPrograms repository checkout, using its new Git metadata and origin. No release has been published.
+The source version is recorded in `PROJECT_VERSION`. The current release path
+is **local Windows x64 builds** and GitHub CLI uploads. Automatic push, tag and
+pull-request Actions triggers are parked in `.github/workflows/build.yml`.
+The existing manual workflow is retained for future use; do not dispatch it
+while hosted builds are frozen.
+
+## Local Windows release
+
+Run from the repository root in your normal PowerShell session. Use an unused
+version, update `PROJECT_VERSION`, and commit the reviewed changes before
+building. Commit and tag messages must end with `[skip ci]` while Actions are
+frozen. These commands do not enable or run Actions.
+
+```powershell
+$python = 'python' # Or the absolute path to a working Python 3.12+ interpreter.
+$version = (Get-Content PROJECT_VERSION -Raw).Trim()
+$stage = "dist/8bitShell-$version-windows-x64-stage"
+$out = "dist/release-$version-windows-x64"
+.\build-windows.cmd -Portable -PortableDirectory $stage -PythonExecutable $python
+if ($LASTEXITCODE) { throw 'Build/test/startup checks failed; stop the release.' }
+```
+
+The build helper runs the complete test suite before deployment and tests
+startup with the SDK environment removed. Use fresh output paths. A restricted
+automation sandbox may deny the private named pipes used by `password_broker_test`
+and `password_auxiliary_test`; run the full suite in the normal desktop session
+and require it to pass before releasing. A developer preview packaged after
+scoped checks is not a fully validated release.
+
+For native installers, install NSIS 3.11 on the build machine. The packager
+uses a SHA256-verified WiX 3.14.1 download/cache. Create the installers and archives:
+
+```powershell
+$env:BIT8_PYTHON = (Get-Command $python -CommandType Application -ErrorAction Stop).Source
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ci/package-windows.ps1 -Stage $stage -OutputDirectory $out -Architecture x64
+if ($LASTEXITCODE) { throw 'Installer packaging failed.' }
+& $python scripts/ci/distribution.py archive --stage $stage --out $out --os windows --arch x64
+if ($LASTEXITCODE) { throw 'Archive packaging failed.' }
+& $python scripts/ci/distribution.py stamp --out $out --os windows --arch x64
+if ($LASTEXITCODE) { throw 'Package manifest failed.' }
+```
+
+Keep the stage free of personal `profile` data. Include the corresponding
+application and Qt source bundles before finalizing:
+
+```powershell
+& $python scripts/ci/local-windows-sources.py --out $out --fetch
+if ($LASTEXITCODE) { throw 'Corresponding source collection failed.' }
+```
+
+The helper requires a clean committed checkout, archives `HEAD`, verifies the
+SDK version and checks every Qt source archive against its cached SHA256
+sidecar before writing the source manifest. `--qt-root` and `--qt-sources`
+select another matching SDK/cache. `--fetch` populates `tooling/qt-sources`
+from the official Qt archive and its checksum sidecars; omit it when a complete
+verified cache already exists. An unrelated or empty cache cannot substitute
+for the SDK's corresponding sources.
+
+Then run `python scripts/ci/release.py --release-check` and
+`python scripts/ci/distribution.py finalize --out <output-folder> --repository 8bitPrograms/8bitShell`.
+Finalization verifies package digests and writes `install-index.tsv`, the
+download scripts, `release-manifest.json` and `SHA256SUMS.txt`. For this local
+release, the index contains Windows x64 only; other platform recipes below
+remain available for later validation.
+
+Test the ZIP and native installer on Windows before uploading. Create a new
+tag on the exact tested commit, push it, and prepare a draft with the CLI:
+
+```powershell
+gh auth status
+git tag -a "v$version" -m "8bitShell $version [skip ci]"
+git push origin "v$version"
+gh release create "v$version" "$out/*" --repo 8bitPrograms/8bitShell --verify-tag --draft --title "8bitShell $version" --notes-file release-notes.txt
+```
+
+`release-notes.txt` must describe the actual checks and remaining limitations.
+Inspect the uploaded draft and publish it from GitHub when ready. Never reuse
+an existing release tag or overwrite an older release's assets.
 
 ## Release matrix
 
@@ -18,7 +95,7 @@ The application starts at **1.0.0**. The source is now in the new 8bitPrograms r
 
 For Debian/Ubuntu, use DEB or the runtime archive. For Fedora, use RPM or the archive. For Arch, use pkg.tar.zst or the archive. ARM Arch-style packages target the community Arch Linux ARM ecosystem; the official Arch Linux container smoke test covers x64 only.
 
-The ordinary release requires all six standard targets. Enable experimental 32-bit jobs through the manual legacy32 input or repository variable ENABLE_LEGACY32=true. A failed enabled target blocks draft creation. Experimental targets never silently substitute an x64 binary and require --experimental / -Experimental in the installer. There is no modern 32-bit macOS target.
+The retained hosted workflow requires the six standard targets when that workflow resumes. The current local release covers Windows x64 only. Experimental targets never silently substitute an x64 binary and require --experimental / -Experimental in the installer. There is no modern 32-bit macOS target.
 
 ## Runtime policy
 
@@ -66,7 +143,11 @@ The installer uses a small TSV release index instead of requiring Python/jq to p
 
 ## Build and package flow
 
-The main entry point is .github/workflows/build.yml. Packaging runs after application tests succeed. Each target contributes a package manifest containing its OS, CPU, digest and version. The final job verifies these manifests, target coverage and version tag, creates the index/checksum list, attaches corresponding application/Qt/runtime-library source archives, and creates a **draft** only. Publishing remains a separate human action.
+The current entry point is `build-windows.cmd -Portable`, followed by the local
+packaging steps above. Packaging runs after application tests succeed. The
+parked `.github/workflows/build.yml` retains the broader hosted recipe for
+future use. Its final job checks full matrix coverage and creates a draft;
+the local Windows release deliberately has a smaller platform scope.
 
 The release toolchain is copied into each repository; the apps do not depend on a sibling checkout or a future monorepo. Shared changes must be applied to both copies.
 
@@ -98,11 +179,11 @@ Windows packages are unsigned until an Authenticode signing process/certificate 
 
 ## Publication checklist
 
-1. Review and commit the migrated source in this repository.
-2. Push the reviewed initial commit to its existing 8bitPrograms origin.
-3. Run the six-target Actions matrix and inspect package and application reports.
-4. Complete signing setup and any existing publication-policy gates.
-5. Tag the reviewed 1.0.0 commit as v1.0.0, inspect the generated draft and publish it after validation.
+1. Choose an unused version and commit the reviewed source with `[skip ci]`.
+2. Build Windows x64 locally and require all application/startup checks to pass.
+3. Test the portable archive and native installer; collect matching source bundles.
+4. Complete the publication-policy checks and finalize manifests/checksums.
+5. Push the exact tested tag, upload with `gh release create --draft`, inspect and publish.
 
 The two repositories have independent source and Git history. Build products, local SDKs, private profiles and dependency caches are ignored. The local source no longer depends on a previous project checkout.
 

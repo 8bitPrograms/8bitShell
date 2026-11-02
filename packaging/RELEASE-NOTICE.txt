@@ -18,3 +18,8 @@ Upstream PowerShell/Win32-OpenSSH publishes its GitHub releases only as
 preview, beta or pre-release builds; 10.4.0.0p1 is marked "preview-release
 (non-production ready)". 8bitShell pins that build by SHA-256 in
 packaging/openssh.lock.json.
+
+Windows x64 packages also carry a private Microsoft ConPTY/OpenConsole runtime
+under bin/conpty, pinned in packaging/conpty.lock.json. Its MIT license and
+source link are included beside those files. It enables terminal image
+sequences without changing the system console or installing a service.

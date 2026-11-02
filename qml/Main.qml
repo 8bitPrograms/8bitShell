@@ -10,8 +10,8 @@ ApplicationWindow {
     objectName: "mainWindow"
     width: 1510
     height: 900
-    minimumWidth: 1080
-    minimumHeight: 680
+    minimumWidth: 480
+    minimumHeight: 320
     visible: true
     title: "8bitShell"
     color: Theme.canvas
@@ -24,6 +24,23 @@ ApplicationWindow {
     property var startupCommand: []
     property string startupDirectory: ""
     property var updater: null
+    function newWindow() {
+        if (!WindowLauncher.newWindow())
+            windowLaunchError.open()
+    }
+    Dialog {
+        id: windowLaunchError
+        title: "Cannot open a new window"
+        anchors.centerIn: parent
+        modal: true
+        standardButtons: Dialog.Ok
+        Label { text: WindowLauncher.lastError; textFormat: Text.PlainText }
+    }
+    Shortcut {
+        sequence: "Ctrl+Shift+N"
+        context: Qt.WindowShortcut
+        onActivated: root.newWindow()
+    }
     Binding { target: Theme; property: "bonusThemesUnlocked"; value: AppSettings.bonusThemesUnlocked }
     property int startupTabCount: 1
     property bool performanceProbe: false
@@ -136,6 +153,7 @@ ApplicationWindow {
             if (AppSettings.darkAppearance) AppSettings.terminalThemeId = action.target
             else AppSettings.terminalLightThemeId = action.target
         } else switch (action.id) {
+            case "window:new": root.newWindow(); break
             case "appearance:toggle": AppSettings.toggleAppearance(); break
             case "sidebar:toggle": AppSettings.sidebarVisible = !AppSettings.sidebarVisible; break
             case "files:toggle": root.inspectorMode = root.inspectorMode === 1 ? 0 : 1; break

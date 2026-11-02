@@ -32,6 +32,10 @@ The following describes the Linux application; see [Windows support](docs/WINDOW
 for the native port, build instructions and its separate validation boundaries:
 
 - a custom Qt Quick desktop shell;
+- independent application windows (Ctrl+Shift+N), with native Windows snapping;
+- Ctrl+click HTTP/HTTPS and `www.` links in terminal output to open the browser;
+- bounded inline Kitty PNG/RGB graphics for terminal images and Codex CLI pets
+  (Windows x64 uses a bundled private ConPTY runtime);
 - a real Linux PTY-backed local terminal rendered inside Qt Quick;
 - direct OpenSSH sessions from Quick Connect and saved profiles;
 - password authentication with optional device-local protected storage, separate from

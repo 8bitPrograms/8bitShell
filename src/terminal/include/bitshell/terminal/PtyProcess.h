@@ -19,6 +19,8 @@ class PtyProcess final : public QObject {
     Q_OBJECT
 
 public:
+    // True when this transport preserves inline image control strings.
+    static bool graphicsAvailable();
     explicit PtyProcess(QObject* parent = nullptr);
     ~PtyProcess() override;
 

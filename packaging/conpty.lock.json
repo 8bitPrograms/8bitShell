@@ -1,0 +1,12 @@
+{
+  "version": "1.25.260303002-preview",
+  "package": "Microsoft.Windows.Console.ConPTY",
+  "source": "https://github.com/microsoft/terminal",
+  "license": "MIT",
+  "architectures": {
+    "x64": {
+      "conpty.dll": "5ae5fdd145fbe146cfc08a2ded60f7b6be84e17c921322c4578d40982c66b0c3",
+      "OpenConsole.exe": "646580a9b149a9962267bac372597c3cbbe17713882b4ed126a62530299aff48"
+    }
+  }
+}

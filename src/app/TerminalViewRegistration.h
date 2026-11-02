@@ -11,6 +11,7 @@
 #include <bitshell/core/SftpController.h>
 #include <bitshell/core/MacroStore.h>
 #include <bitshell/core/LocalProfileStore.h>
+#include <bitshell/core/WindowLauncher.h>
 #include <bitshell/core/HostMonitor.h>
 #include <bitshell/core/LocalFileModel.h>
 #include <bitshell/core/PersonalProfile.h>
@@ -18,6 +19,13 @@
 #include <bitshell/core/CredentialStore.h>
 
 namespace bitshell::app {
+struct WindowLauncherRegistration {
+    Q_GADGET
+    QML_FOREIGN(bitshell::core::WindowLauncher)
+    QML_NAMED_ELEMENT(WindowLauncher)
+    QML_SINGLETON
+    QML_ADDED_IN_VERSION(1, 0)
+};
 struct LocalProfileStoreRegistration {
     Q_GADGET
     QML_FOREIGN(bitshell::core::LocalProfileStore)

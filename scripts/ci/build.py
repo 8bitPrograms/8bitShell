@@ -112,8 +112,31 @@ def _windows_unelevated(args,env,timeout,workdir,readable,log_path):
             except Exception as exc:print(f"::warning::{reclaim[0]} on {workdir} failed: {exc}",flush=True)
         try:subprocess.run(["net","user",user,"/delete"],**quiet)
         except Exception:pass
+def windows_elevated():
+    import ctypes
+    from ctypes import wintypes as w
+    kernel=ctypes.WinDLL("kernel32",use_last_error=True)
+    security=ctypes.WinDLL("advapi32",use_last_error=True)
+    kernel.GetCurrentProcess.restype=w.HANDLE
+    kernel.CloseHandle.argtypes=[w.HANDLE]
+    security.OpenProcessToken.argtypes=[w.HANDLE,w.DWORD,ctypes.POINTER(w.HANDLE)]
+    security.GetTokenInformation.argtypes=[w.HANDLE,ctypes.c_int,ctypes.c_void_p,w.DWORD,ctypes.POINTER(w.DWORD)]
+    token=w.HANDLE()
+    if not security.OpenProcessToken(kernel.GetCurrentProcess(),8,ctypes.byref(token)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        elevated=w.DWORD();size=w.DWORD()
+        if not security.GetTokenInformation(token,20,ctypes.byref(elevated),ctypes.sizeof(elevated),ctypes.byref(size)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return bool(elevated.value)
+    finally:kernel.CloseHandle(token)
+
 def smoke_run(args,env,timeout,workdir,readable):
     if platform.system()!="Windows":return run(args,env=env,timeout=timeout)
+    # A local developer is already unelevated. Do not create/delete accounts or
+    # change directory ACLs in that case; the alternate-user path is for the
+    # elevated GitHub runner only.
+    if not windows_elevated():return run(args,env=env,timeout=timeout)
     command=[str(a) for a in args];log=workdir/"smoke-output.log"
     try:code=_windows_unelevated(command,env,timeout,workdir,readable,log)
     except subprocess.TimeoutExpired:
@@ -161,6 +184,8 @@ def main():
         helper=ROOT/"build"/f"puttygen-{system}-{cpu}"/("puttygen.exe" if system=="windows" else "puttygen")
         if not helper.exists():run([sys.executable,ROOT/"scripts/ci/build-puttygen.py","--output",helper])
         run([sys.executable,ROOT/"scripts/ci/build-puttygen.py","--verify",helper]);args+=[f"-DBIT8SHELL_PUTTYGEN_EXECUTABLE={helper}"]
+    if system=="windows" and cpu=="x64" and c["app"]=="8bitShell":
+        run([sys.executable,ROOT/"scripts/ci/prepare-conpty.py"])
     run(args);run(["cmake","--build",build,"--parallel",a.jobs])
     if system=="windows" and c["app"]=="8bitShell":openssh_windows(build,cpu,build_layout=True)
     env=os.environ.copy();env.update(QT_QPA_PLATFORM="offscreen",QT_QUICK_BACKEND="software")

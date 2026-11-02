@@ -22,21 +22,11 @@
 #include <bitshell/core/Platform.h>
 #include "Version.h"
 #include <UpdateClient.h>
+#include "WindowsFrame.h"
 #ifdef Q_OS_WIN
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
 
-void applyMergedTitleBar(QWindow* window) {
-    if (window == nullptr)
-        return;
-    const auto hwnd = reinterpret_cast<HWND>(window->winId());
-    // One pixel of the system frame keeps the shadow and rounded corners
-    // after the native title bar is removed.
-    const MARGINS margins{1, 1, 1, 1};
-    DwmExtendFrameIntoClientArea(hwnd, &margins);
-    const DWM_WINDOW_CORNER_PREFERENCE corners = DWMWCP_ROUND;
-    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corners, sizeof(corners));
-}
 #endif
 #ifdef Q_OS_LINUX
 #include <sys/prctl.h>
@@ -205,7 +195,8 @@ int main(int argc, char* argv[]) {
     if (!parser.isSet(screenshotOption) && !performanceProbe) updater.start();
 #ifdef Q_OS_WIN
     if (!engine.rootObjects().isEmpty())
-        applyMergedTitleBar(qobject_cast<QWindow*>(engine.rootObjects().first()));
+        if (auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first()))
+            new bitshell::app::WindowsFrame(window);
 #endif
     const qint64 engineReadyMilliseconds = startupElapsed.elapsed();
     qint64 firstFrameMilliseconds = -1;

@@ -5,6 +5,7 @@
 #include <QKeyEvent>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QScopeGuard>
 #include <QDir>
 #include <windows.h>
 #include <bitshell/terminal/PtyProcess.h>
@@ -18,7 +19,38 @@ using bitshell::terminal::TerminalView;
 class WindowsPtyTest : public QObject {
     Q_OBJECT
     QString fixture() const { return QCoreApplication::applicationDirPath() + QStringLiteral("/windows_terminal_fixture.exe"); }
+    void emulateTerminal(PtyProcess& process) {
+        // These transport-only fixtures have no TerminalView/libvterm to
+        // answer the modern console host's startup DA1 handshake.
+        connect(&process, &PtyProcess::dataReceived, &process,
+            [&process, tail=QByteArray{}](const QByteArray& bytes) mutable {
+                const auto data = tail + bytes;
+                if (data.contains("\x1b[c")) process.write("\x1b[?1;2c");
+                tail = data.right(2);
+            });
+    }
 private slots:
+    void graphicsPassthrough() {
+        if (!PtyProcess::graphicsAvailable()) QSKIP("Private ConPTY runtime not prepared");
+        PtyProcess process;
+        emulateTerminal(process);
+        QByteArray output;
+        QString error;
+        connect(&process, &PtyProcess::dataReceived, this, [&](const QByteArray& bytes) { output += bytes; });
+        QVERIFY2(process.start(fixture(), {QStringLiteral("graphics-probe")}, 80, 24, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(output.contains("AFTER"), 5000);
+        QVERIFY2(output.contains("\x1bP9;1;0q\"1;1;1;1#0;2;100;0;0#0@\x1b\\"), output.toHex().constData());
+        QVERIFY2(output.contains("\x1b_Ga=T,i=7,s=1,v=1,f=24,q=2,C=1;/wAA\x1b\\"), output.toHex().constData());
+    }
+    void graphicsReachTheRendererThroughConpty() {
+        if (!PtyProcess::graphicsAvailable()) QSKIP("Private ConPTY runtime not prepared");
+        TerminalView terminal;
+        terminal.setLogEnabled(false);
+        terminal.setWidth(800); terminal.setHeight(500);
+        QVERIFY(terminal.startLocalCommand({fixture(), QStringLiteral("graphics-probe")}));
+        QTRY_COMPARE_WITH_TIMEOUT(TerminalTestAccess::graphicsCount(terminal), 1, 10000);
+        QCOMPARE(TerminalTestAccess::graphicsBytes(terminal), 4);
+    }
     void independentWorkingDirectoriesAndCommandPrompt() {
         QTemporaryDir root;
         QVERIFY(root.isValid());
@@ -27,6 +59,7 @@ private slots:
         QVERIFY(QDir().mkpath(first)); QVERIFY(QDir().mkpath(second));
         const auto original = QDir::currentPath();
         PtyProcess a, b; QByteArray outputA, outputB; QString error;
+        emulateTerminal(a); emulateTerminal(b);
         connect(&a, &PtyProcess::dataReceived, this, [&](const QByteArray& bytes) { outputA += bytes; });
         connect(&b, &PtyProcess::dataReceived, this, [&](const QByteArray& bytes) { outputB += bytes; });
         QVERIFY2(a.start(fixture(), {QStringLiteral("profile")}, 1000, 30, &error, first), qPrintable(error));
@@ -62,6 +95,7 @@ private slots:
         QFETCH(QByteArray, input);
         QFETCH(QString, mode);
         PtyProcess p; QByteArray output;
+        emulateTerminal(p);
         connect(&p, &PtyProcess::dataReceived, this, [&](const QByteArray& b) { output += b; });
         QSignalSpy exit(&p, &PtyProcess::finished); QString error;
         QVERIFY2(p.start(fixture(), {mode}, 80, 24, &error), qPrintable(error));
@@ -74,6 +108,7 @@ private slots:
     }
     void literalUnicodeArguments() {
         PtyProcess p; QByteArray output;
+        emulateTerminal(p);
         connect(&p, &PtyProcess::dataReceived, this, [&](const QByteArray& b) { output += b; });
         QSignalSpy exit(&p, &PtyProcess::finished);
         const QStringList values{QString{}, QStringLiteral("a b"), QStringLiteral("quote\"slash\\"),
@@ -92,6 +127,7 @@ private slots:
     }
     void inputResizeAndExit() {
         PtyProcess p; QByteArray output;
+        emulateTerminal(p);
         connect(&p, &PtyProcess::dataReceived, this, [&](const QByteArray& b) { output += b; });
         QSignalSpy exit(&p, &PtyProcess::finished); QString error;
         QVERIFY2(p.start(fixture(), {QStringLiteral("raw")}, 80, 24, &error), qPrintable(error));
@@ -115,6 +151,18 @@ private slots:
         QTest::newRow("ctrl-c-copy-without-selection") << QStringLiteral("interrupt-raw") << true;
     }
     void controlCLeavesPowerShellUsable() {
+        // Use the installed Windows modules. A developer/runtime PSModulePath
+        // can point at downloaded signed modules and open a publisher prompt,
+        // which is unrelated to terminal input handling.
+        const bool hadModules = qEnvironmentVariableIsSet("PSModulePath");
+        const auto previousModules = qgetenv("PSModulePath");
+        const auto restoreModules = qScopeGuard([&] {
+            if (hadModules) qputenv("PSModulePath", previousModules);
+            else qunsetenv("PSModulePath");
+        });
+        qputenv("PSModulePath", (bitshell::core::Platform::windowsSystemDirectory()
+            + QStringLiteral("/WindowsPowerShell/v1.0/Modules;")
+            + qEnvironmentVariable("ProgramFiles") + QStringLiteral("/WindowsPowerShell/Modules")).toUtf8());
         QFETCH(QString, mode);
         QFETCH(bool, controlCCopy);
         TerminalView terminal;
@@ -150,6 +198,7 @@ private slots:
         SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
         const HANDLE event = CreateEventW(&sa, TRUE, FALSE, nullptr); QVERIFY(event);
         PtyProcess p; QByteArray output;
+        emulateTerminal(p);
         connect(&p, &PtyProcess::dataReceived, this, [&](const QByteArray& b) { output += b; });
         QSignalSpy exit(&p, &PtyProcess::finished); QString error;
         QVERIFY(p.start(fixture(), {QStringLiteral("inherit"), QString::number(quintptr(event))}, 80, 24, &error));
@@ -160,6 +209,7 @@ private slots:
     }
     void stopIsBounded() {
         PtyProcess p; QByteArray output; QString error;
+        emulateTerminal(p);
         connect(&p, &PtyProcess::dataReceived, this, [&](const QByteArray& bytes) { output += bytes; });
         QVERIFY(p.start(fixture(), {QStringLiteral("sleep")}, 80, 24, &error));
         QTRY_VERIFY_WITH_TIMEOUT(output.contains("SLEEP_READY"), 10000);
@@ -174,6 +224,7 @@ private slots:
     }
     void shortLivedOutputCompletesBeforeFinished() {
         PtyProcess p; QByteArray output;
+        emulateTerminal(p);
         connect(&p, &PtyProcess::dataReceived, this, [&](const QByteArray& bytes) { output += bytes; });
         QSignalSpy exit(&p, &PtyProcess::finished);
         QString error;
@@ -222,6 +273,7 @@ private slots:
     }
     void outputPressureAndRestart() {
         PtyProcess p; QByteArray tail; qsizetype total = 0;
+        emulateTerminal(p);
         connect(&p, &PtyProcess::dataReceived, this, [&](const QByteArray& b) { total += b.size(); tail = (tail + b).right(4096); });
         QSignalSpy exit(&p, &PtyProcess::finished); QString error;
         QVERIFY(p.start(fixture(), {QStringLiteral("flood")}, 200, 30, &error));

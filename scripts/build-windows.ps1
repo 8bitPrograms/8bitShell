@@ -59,6 +59,8 @@ try {
     $resolvedPuttygen = [IO.Path]::GetFullPath($PuttygenPath)
     & $PythonExecutable scripts/ci/build-puttygen.py --verify $resolvedPuttygen
     if ($LASTEXITCODE) { throw 'PuTTYgen provenance verification failed.' }
+    & $PythonExecutable scripts/ci/prepare-conpty.py
+    if ($LASTEXITCODE) { throw 'Private ConPTY setup failed. See docs/BUILDING.md for offline preparation.' }
     $configure = @('--preset','windows-release','-DCMAKE_TRY_COMPILE_CONFIGURATION=Release', "-DBIT8SHELL_PUTTYGEN_EXECUTABLE=$resolvedPuttygen")
     foreach ($item in @(@('BITSHELL_VTERM_SOURCE','libvterm'), @('YAML-CPP','yaml-cpp'))) {
         $source = Join-Path $repo ("tooling/source-cache/" + $item[1])
