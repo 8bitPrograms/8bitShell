@@ -59,7 +59,9 @@ Launch **Start-Portable.cmd** from the complete newly generated folder. Its
 settings stay in that folder's `profile` directory. The raw build executable
 depends on the SDK environment and is not the normal launch path.
 
-The local `-Portable` flow needs no WiX/NSIS and does not install the app.
+The local `-Portable` flow needs no WiX and does not install the app.
+Use `build-windows.cmd -Package` to build the setup EXE, MSI and portable ZIP
+together. The native EXE launcher uses MSVC; no NSIS installation is needed.
 Native MSI/EXE and CI ZIP/tar.gz production use [RELEASING.md](RELEASING.md).
 
 ### Terminal links

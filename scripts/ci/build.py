@@ -159,7 +159,7 @@ def smoke(stage,system):
         exe=stage/"bin"/(app+".exe");env["PATH"]=str(Path(os.environ["SystemRoot"])/"System32")
         # Test the installed Windows shell modules. Merely dropping the variable
         # can let PowerShell reconstruct an SDK/runtime path from its parent.
-        env["PSModulePath"]=os.pathsep.join((
+        env["PSMODULEPATH"]=os.pathsep.join((
             str(Path(os.environ["SystemRoot"])/"System32/WindowsPowerShell/v1.0/Modules"),
             str(Path(os.environ["ProgramFiles"])/"WindowsPowerShell/Modules")))
         env["QT_QPA_FONTDIR"]=str(Path(os.environ["SystemRoot"])/"Fonts")

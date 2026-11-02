@@ -4,7 +4,7 @@
 
 **Kendi yolunu aç.**
 
-**Current version: 1.0.0.** Pixel Core branding: teal terminal.
+**Current version: 1.0.1.** Pixel Core branding: teal terminal.
 
 Local build, test, portable launch and troubleshooting instructions: [docs/BUILDING.md](docs/BUILDING.md).
 
@@ -14,7 +14,7 @@ Click the version seven times in Settings to reveal Blueberi, Raspberi and the C
 
 Cross-platform release builds, bundled runtimes, curl installation, native packages and repository maintenance are documented in [docs/RELEASING.md](docs/RELEASING.md).
 
-**Version 1.0.0 in local release preparation.** Executable: `8bitShell`; Linux package: `8bitshell`.
+**Version 1.0.1 in local release preparation.** Executable: `8bitShell`; Linux package: `8bitshell`.
 See [releases, installers, versioning and distro repositories](docs/RELEASING.md).
 Copyright (C) 2026 8bitShell contributors. 8bitShell is free software under the
 GNU General Public License, version 3 or any later version; see [LICENSE](LICENSE).

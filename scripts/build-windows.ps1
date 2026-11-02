@@ -7,6 +7,7 @@ param(
     [switch]$Diagnose,
     [switch]$Portable,
     [string]$PortableDirectory = '',
+    [string]$PackageDirectory = '',
     [switch]$Package
 )
 $ErrorActionPreference = 'Stop'
@@ -26,11 +27,15 @@ if (!(Test-Path -LiteralPath $vswhere)) { throw 'Install Visual Studio C++ Build
 $vsRoot = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (!$vsRoot) { throw 'MSVC x64 tools were not found.' }
 $savedEnvironment = @{}
-foreach ($name in @('PATH','QT_PLUGIN_PATH','QT_QPA_PLATFORM','QT_QUICK_BACKEND','QT_QPA_FONTDIR','TEMP','TMP','TMPDIR','BIT8SHELL_QT_ROOT','VSINSTALLDIR')) {
+foreach ($name in @('PATH','QT_PLUGIN_PATH','QT_QPA_PLATFORM','QT_QUICK_BACKEND','QT_QPA_FONTDIR','TEMP','TMP','TMPDIR','BIT8SHELL_QT_ROOT','BIT8_PYTHON','VSINSTALLDIR')) {
     $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 Push-Location $repo
 try {
+    if ($Package) {
+        $pending = & git status --porcelain
+        if ($LASTEXITCODE -or $pending) { throw 'Commit the reviewed source before building release packages.' }
+    }
     Import-Module (Join-Path $vsRoot 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
     Enter-VsDevShell -VsInstallPath $vsRoot -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
     $vsCMakeBin = Join-Path $vsRoot 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin'
@@ -81,13 +86,33 @@ try {
     $env:QT_QPA_FONTDIR = Join-Path $env:SystemRoot 'Fonts'
     & ctest --preset windows-release --no-tests=error
     if ($LASTEXITCODE) { throw 'Tests failed; a package was not produced.' }
-    if ($Portable) {
+    if ($Portable -or $Package) {
         if (!$PortableDirectory) { $PortableDirectory = 'dist/8bitShell-windows-x64-' + (Get-Date -Format 'yyyyMMdd-HHmmss') }
         & $PythonExecutable scripts/ci/local-windows-portable.py --output $PortableDirectory
         if ($LASTEXITCODE) { throw 'Portable deployment or startup test failed.' }
     }
     if ($Package) {
-        & (Join-Path $PSScriptRoot 'package-windows.ps1') -PythonExecutable $PythonExecutable
+        $version = (Get-Content PROJECT_VERSION -Raw).Trim()
+        if (!$PackageDirectory) { $PackageDirectory = "dist/8bitShell-$version-windows-x64-" + (Get-Date -Format 'yyyyMMdd-HHmmss') }
+        if (Test-Path -LiteralPath $PackageDirectory) { throw 'Choose a fresh -PackageDirectory; existing packages are preserved.' }
+        $env:BIT8_PYTHON = (Get-Command $PythonExecutable -CommandType Application -ErrorAction Stop).Source
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ci/package-windows.ps1 -Stage $PortableDirectory -OutputDirectory $PackageDirectory -Architecture x64
+        if ($LASTEXITCODE) { throw 'MSI/setup EXE packaging failed.' }
+        & $PythonExecutable scripts/ci/distribution.py archive --stage $PortableDirectory --out $PackageDirectory --os windows --arch x64
+        if ($LASTEXITCODE) { throw 'Portable archive packaging failed.' }
+        & $PythonExecutable scripts/ci/check-windows-installer.py --setup "$PackageDirectory/8bitShell-$version-windows-x64-setup.exe" --msi "$PackageDirectory/8bitShell-$version-windows-x64.msi"
+        if ($LASTEXITCODE) { throw 'Installer payload checks failed.' }
+        Get-ChildItem -LiteralPath $PackageDirectory -File | Where-Object Extension -In '.msi','.exe','.zip' | Sort-Object Name | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { $_.Hash.ToLowerInvariant() + '  ' + (Split-Path -Leaf $_.Path) } |
+            Set-Content -LiteralPath (Join-Path $PackageDirectory 'SHA256SUMS.txt') -Encoding ascii
+        $commit = (& git rev-parse HEAD).Trim()
+        @{version=$version;commit=$commit;msiIceValidated=$true;installerLifecycleTested=$false;blockedTests=@()} |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PackageDirectory 'build-info.json') -Encoding utf8
+        $notes = "# 8bitShell $version - Windows preview`r`n`r`nSource: $commit`r`n`r`n" +
+            (Get-Content -LiteralPath packaging/WINDOWS-PREVIEW-NOTES.md -Raw) +
+            "`r`nValidation: full application tests, package startup, MSI ICE validation and setup/MSI payload checks passed.`r`n"
+        $notes | Set-Content -LiteralPath (Join-Path $PackageDirectory 'RELEASE-NOTES.md') -Encoding utf8
+        Write-Host "Setup EXE, MSI and portable ZIP ready: $PackageDirectory"
     }
     Write-Host '8bitShell local build and tests succeeded.'
 } finally {

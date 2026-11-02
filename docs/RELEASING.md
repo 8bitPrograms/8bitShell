@@ -29,8 +29,15 @@ and `password_auxiliary_test`; run the full suite in the normal desktop session
 and require it to pass before releasing. A developer preview packaged after
 scoped checks is not a fully validated release.
 
-For native installers, install NSIS 3.11 on the build machine. The packager
-uses a SHA256-verified WiX 3.14.1 download/cache. Create the installers and archives:
+For all formats together, run `build-windows.cmd -Package`. It builds/tests the
+application, deploys the runtime and produces the setup EXE, MSI and portable
+ZIP (plus tar.gz) with checksums in one output directory. `-PackageDirectory`
+selects a fresh output folder. The EXE embeds the same MSI and invokes the
+absolute system Windows Installer executable; it adds no second installed product.
+
+The native setup launcher is compiled with the existing MSVC tools and requires
+no NSIS installation. MSI packaging uses a SHA256-verified WiX 3.14.1 download/cache.
+To package an already tested portable stage separately:
 
 ```powershell
 $env:BIT8_PYTHON = (Get-Command $python -CommandType Application -ErrorAction Stop).Source
@@ -40,7 +47,20 @@ if ($LASTEXITCODE) { throw 'Installer packaging failed.' }
 if ($LASTEXITCODE) { throw 'Archive packaging failed.' }
 & $python scripts/ci/distribution.py stamp --out $out --os windows --arch x64
 if ($LASTEXITCODE) { throw 'Package manifest failed.' }
+& $python scripts/ci/check-windows-installer.py --setup "$out/8bitShell-$version-windows-x64-setup.exe" --msi "$out/8bitShell-$version-windows-x64.msi"
+if ($LASTEXITCODE) { throw 'Installer payload verification failed.' }
 ```
+
+`check-windows-installer.py` reads the MSI database, checks its version,
+per-user scope and bundled console/runtime files, and verifies that setup
+extracts the exact same MSI without installing anything. It also verifies
+refusal to overwrite an existing extraction target. Real install/upgrade/remove
+testing remains a separate desktop check.
+
+In a restricted sandbox, `-PreviewWithoutMsiValidation` on the packager can
+produce preview artifacts when the Windows Installer service is unavailable.
+It explicitly omits ICE validation; the normal `-Package` flow retains that
+validation and does not use this preview option.
 
 Keep the stage free of personal `profile` data. Include the corresponding
 application and Qt source bundles before finalizing:
@@ -78,6 +98,18 @@ gh release create "v$version" "$out/*" --repo 8bitPrograms/8bitShell --verify-ta
 `release-notes.txt` must describe the actual checks and remaining limitations.
 Inspect the uploaded draft and publish it from GitHub when ready. Never reuse
 an existing release tag or overwrite an older release's assets.
+
+For the prepared Windows preview folder (including `build-info.json`,
+`RELEASE-NOTES.md` and `SHA256SUMS.txt`), one command verifies all three required
+assets, pushes the recorded source branch and uploads them to the same draft:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/publish-windows-preview.ps1
+```
+
+`-Publish` creates a public prerelease instead of a draft. It always remains a
+prerelease; it does not change the existing stable/latest release. The helper
+refuses missing or changed assets and requires the exact recorded source commit.
 
 ## Release matrix
 

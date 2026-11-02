@@ -3,7 +3,8 @@ param(
  [Parameter(Mandatory=$true)][string]$Stage,
  [Parameter(Mandatory=$true)][string]$OutputDirectory,
  [ValidateSet('x64','arm64','x86')][string]$Architecture='x64',
- [switch]$GenerateOnly
+ [switch]$GenerateOnly,
+ [switch]$PreviewWithoutMsiValidation
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2
@@ -132,32 +133,13 @@ $base="$app-$version-windows-$Architecture";$msi=Join-Path $OutputDirectory ($ba
 # ICE91 is the per-user LocalAppData hint. ICE64 wants RemoveFolder for the
 # shared Programs directory; uninstall must leave other apps installed there.
 # Keep the WiX debug database in the scratch folder, not next to the release MSI.
-& (Join-Path $wix 'light.exe') -nologo -sice:ICE91 -sice:ICE64 -pdbout (Join-Path $work 'Application.wixpdb') -out $msi $obj
+$validation=@('-sice:ICE91','-sice:ICE64')
+if($PreviewWithoutMsiValidation){
+ Write-Warning 'Preview only: Windows Installer ICE validation is omitted. Validate on a normal Windows host before publishing a stable release.'
+ $validation=@('-sval')
+}
+& (Join-Path $wix 'light.exe') -nologo @validation -pdbout (Join-Path $work 'Application.wixpdb') -out $msi $obj
 if($LASTEXITCODE){throw 'MSI link/validation failed'}
-$nsis=Get-Command makensis.exe -ErrorAction SilentlyContinue
-$compiler=if($nsis){$nsis.Source}else{Join-Path ([Environment]::GetEnvironmentVariable('ProgramFiles(x86)')) 'NSIS/makensis.exe'}
-if(!(Test-Path -LiteralPath $compiler)){throw 'Install NSIS 3.11 on the build machine'}
-$bootstrap=Join-Path $work 'Bootstrap.nsi'
-$nsi=@'
-Unicode true
-Name "@APP@"
-OutFile "@SETUP@"
-RequestExecutionLevel user
-Icon "@ICON@"
-VIProductVersion "@VERSION@.0"
-VIAddVersionKey "ProductName" "@APP@"
-VIAddVersionKey "CompanyName" "8bitPrograms"
-VIAddVersionKey "FileDescription" "@APP@ installer"
-Section
- InitPluginsDir
- SetOutPath "$PLUGINSDIR"
- File /oname=Application.msi "@MSI@"
- ExecWait '"$SYSDIR\msiexec.exe" /i "$PLUGINSDIR\Application.msi"' $0
- SetErrorLevel $0
-SectionEnd
-'@
-$nsi=$nsi.Replace('@APP@',$app).Replace('@SETUP@',(Join-Path $OutputDirectory ($base+'-setup.exe'))).Replace('@ICON@',(Join-Path $repo $config.iconIco)).Replace('@VERSION@',$version).Replace('@MSI@',$msi)
-[IO.File]::WriteAllText($bootstrap,$nsi,[Text.UTF8Encoding]::new($false))
-& $compiler $bootstrap
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'build-windows-bootstrap.ps1') -Msi $msi -Output (Join-Path $OutputDirectory ($base+'-setup.exe')) -Version $version -Architecture $Architecture
 if($LASTEXITCODE){throw 'EXE bootstrap compilation failed'}
 Write-Output "Created MSI and EXE packages for $app $version $Architecture"
